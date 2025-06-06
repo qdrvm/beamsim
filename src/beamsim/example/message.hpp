@@ -29,7 +29,7 @@ namespace beamsim::example {
       if (limbs_.size() < other.limbs_.size()) {
         limbs_.resize(other.limbs_.size());
       }
-      for (size_t i = 0; i < limbs_.size(); ++i) {
+      for (size_t i = 0; i < limbs_.size() and i < other.limbs_.size(); ++i) {
         limbs_.at(i) |= other.limbs_.at(i);
       }
     }
