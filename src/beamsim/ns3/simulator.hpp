@@ -362,7 +362,14 @@ namespace beamsim::ns3_ {
     }
 
     void run(Time timeout) {
+      using C = std::chrono::steady_clock;
+      auto t0 = C::now();
       ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
+      auto dt =
+          std::chrono::duration_cast<std::chrono::milliseconds>(C::now() - t0);
+      std::println("ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables {}ms",
+                   dt.count());
+
       ns3::Simulator::Stop(timeToNs3(timeout));
       ns3::Simulator::Run();
       ns3::Simulator::Stop();

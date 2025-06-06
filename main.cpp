@@ -218,6 +218,7 @@ int main() {
                group_count,
                roles.validator_count / group_count,
                roles.validator_count);
+  std::println();
 
 #ifndef ns3_FOUND
   std::println("ns3 not found");
