@@ -226,6 +226,7 @@ int main() {
 
   for (auto gossip : {false, true}) {
     auto run = [&](beamsim::Random &random, auto &simulator) {
+      beamsim::Stopwatch t_run;
       beamsim::example::SharedState shared_state{roles};
       if (gossip) {
         simulator.template addPeers<beamsim::example::PeerGossip>(
@@ -252,10 +253,9 @@ int main() {
             roles.validator_count, shared_state);
       }
       simulator.run(std::chrono::minutes{1});
-      std::println("time = {}ms, {}",
-                   std::chrono::duration_cast<std::chrono::milliseconds>(
-                       simulator.time())
-                       .count(),
+      std::println("time = {}ms, real = {}ms, {}",
+                   beamsim::ms(simulator.time()),
+                   beamsim::ms(t_run.time()),
                    shared_state.done ? "success" : "failure");
       std::println();
     };
@@ -273,7 +273,7 @@ int main() {
 
 #ifdef ns3_FOUND
     {
-      std::println("goossip={} ns3", gossip);
+      std::println("gossip={} ns3", gossip);
       beamsim::Random random;
       beamsim::ns3_::Simulator simulator;
       beamsim::ns3_::generate(random, simulator, roles);
