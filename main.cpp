@@ -210,8 +210,8 @@ namespace beamsim::example {
 }  // namespace beamsim::example
 
 int main() {
-  beamsim::example::GroupIndex group_count = 4;
-  auto roles = beamsim::example::Roles::make(group_count * 3 + 1, group_count);
+  beamsim::example::GroupIndex group_count = 20;
+  auto roles = beamsim::example::Roles::make(group_count * 50 + 1, group_count);
   beamsim::gossip::Config gossip_config{3, 1};
 
   std::println("{} groups of {} validators = {} validators",
