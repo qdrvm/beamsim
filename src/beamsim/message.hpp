@@ -4,6 +4,7 @@
 #include <xxhash.hpp>
 
 namespace beamsim {
+  using MessageSize = uint32_t;
   using MessageHash = uint64_t;
 
   class MessageHasher {
@@ -31,7 +32,7 @@ namespace beamsim {
     virtual ~IMessage() = default;
 
     // payload and padding
-    virtual size_t size() const = 0;
+    virtual MessageSize size() const = 0;
 
     // used by gossip
     virtual void hash(MessageHasher &hasher) const = 0;

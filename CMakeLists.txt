@@ -20,3 +20,16 @@ add_compile_options(
 
 add_executable(main main.cpp)
 target_include_directories(main PRIVATE ${PROJECT_SOURCE_DIR}/src)
+
+find_package(ns3 CONFIG)
+if(ns3_FOUND)
+  target_compile_definitions(main PRIVATE ns3_FOUND)
+  target_link_libraries(main
+    ns3::applications
+    ns3::core
+    ns3::internet
+    ns3::point-to-point
+  )
+else()
+  message("ns3 not found")
+endif()

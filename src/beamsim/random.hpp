@@ -20,11 +20,16 @@ namespace beamsim {
     }
 
     template <typename T>
-    std::vector<T> sample(std::span<const T> xs, size_t n) {
-      std::vector<T> r;
+    auto sample(std::span<T> xs, size_t n) {
+      std::vector<std::remove_const_t<T>> r;
       r.reserve(std::min(xs.size(), n));
       std::ranges::sample(xs, std::back_inserter(r), n, engine_);
       return r;
+    }
+
+    template <typename T>
+    auto &pick(std::span<T> xs) {
+      return xs[random<size_t>(0, xs.size() - 1)];
     }
 
    private:

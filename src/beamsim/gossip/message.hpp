@@ -14,8 +14,8 @@ namespace beamsim::gossip {
   class Message : public IMessage {
    public:
     // IMessage
-    size_t size() const override {
-      size_t size = 0;
+    MessageSize size() const override {
+      MessageSize size = 0;
       size += publish.size() * sizeof(Publish::topic_index);
       size += publish.size() * sizeof(Publish::origin);
       for (auto &publish : this->publish) {

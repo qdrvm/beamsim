@@ -64,7 +64,7 @@ namespace beamsim::example {
     Message(Variant variant) : variant{std::move(variant)} {}
 
     // IMessage
-    size_t size() const override {
+    MessageSize size() const override {
       if (auto *signature = std::get_if<MessageSignature>(&variant)) {
         return sizeof(signature->peer_index) + kSizeSignature;
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&variant)) {

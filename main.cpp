@@ -6,6 +6,10 @@
 #include <beamsim/simulator.hpp>
 #include <print>
 
+#ifdef ns3_FOUND
+#include <beamsim/ns3/generate.hpp>
+#endif
+
 // TODO: const -> config
 
 namespace beamsim::example {
@@ -203,19 +207,21 @@ int main() {
   auto roles = beamsim::example::Roles::make(group_count * 3 + 1, group_count);
   beamsim::gossip::Config gossip_config{3, 1};
 
+  std::println("{} groups of {} validators = {} validators",
+               group_count,
+               roles.validator_count / group_count,
+               roles.validator_count);
+
+#ifndef ns3_FOUND
+  std::println("ns3 not found");
+#endif
+
   for (auto gossip : {false, true}) {
-    for (auto queue : {false, true}) {
-      std::println("gossip={} queue={}", gossip, queue);
-      beamsim::Random random;
-      beamsim::Delay delay{random};
-      beamsim::DelayNetwork delay_network{delay};
-      beamsim::QueueNetwork queue_network{delay};
-      beamsim::Simulator simulator{queue ? (beamsim::INetwork &)queue_network
-                                         : (beamsim::INetwork &)delay_network};
+    auto run = [&](beamsim::Random &random, auto &simulator) {
       beamsim::example::SharedState shared_state{roles};
       if (gossip) {
-        simulator.addPeers<beamsim::example::PeerGossip>(roles.validator_count,
-                                                         shared_state);
+        simulator.template addPeers<beamsim::example::PeerGossip>(
+            roles.validator_count, shared_state);
         auto subscribe = [&](beamsim::gossip::TopicIndex topic_index,
                              const std::vector<beamsim::PeerIndex> &peers) {
           auto views = beamsim::gossip::generate(random, gossip_config, peers);
@@ -234,8 +240,8 @@ int main() {
         subscribe(beamsim::example::topic_snark1, roles.aggregators);
         subscribe(beamsim::example::topic_snark2, roles.validators);
       } else {
-        simulator.addPeers<beamsim::example::PeerDirect>(roles.validator_count,
-                                                         shared_state);
+        simulator.template addPeers<beamsim::example::PeerDirect>(
+            roles.validator_count, shared_state);
       }
       simulator.run(std::chrono::minutes{1});
       std::println("time = {}ms, {}",
@@ -244,6 +250,27 @@ int main() {
                        .count(),
                    shared_state.done ? "success" : "failure");
       std::println();
+    };
+
+    for (auto queue : {false, true}) {
+      std::println("gossip={} {}", gossip, queue ? "queue" : "delay");
+      beamsim::Random random;
+      beamsim::Delay delay{random};
+      beamsim::DelayNetwork delay_network{delay};
+      beamsim::QueueNetwork queue_network{delay};
+      beamsim::Simulator simulator{queue ? (beamsim::INetwork &)queue_network
+                                         : (beamsim::INetwork &)delay_network};
+      run(random, simulator);
     }
+
+#ifdef ns3_FOUND
+    {
+      std::println("goossip={} ns3", gossip);
+      beamsim::Random random;
+      beamsim::ns3_::Simulator simulator;
+      beamsim::ns3_::generate(random, simulator, roles);
+      run(random, simulator);
+    }
+#endif
   }
 }
