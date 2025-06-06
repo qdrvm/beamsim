@@ -210,75 +210,86 @@ namespace beamsim::example {
 }  // namespace beamsim::example
 
 int main() {
-  beamsim::example::GroupIndex group_count = 20;
-  auto roles = beamsim::example::Roles::make(group_count * 50 + 1, group_count);
-  beamsim::gossip::Config gossip_config{3, 1};
-
-  std::println("{} groups of {} validators = {} validators",
-               group_count,
-               roles.validator_count / group_count,
-               roles.validator_count);
-  std::println();
-
 #ifndef ns3_FOUND
   std::println("ns3 not found");
 #endif
 
-  for (auto gossip : {false, true}) {
-    auto run = [&](beamsim::Random &random, auto &simulator) {
-      beamsim::Stopwatch t_run;
-      beamsim::example::SharedState shared_state{roles};
-      if (gossip) {
-        simulator.template addPeers<beamsim::example::PeerGossip>(
-            roles.validator_count, shared_state);
-        auto subscribe = [&](beamsim::gossip::TopicIndex topic_index,
-                             const std::vector<beamsim::PeerIndex> &peers) {
-          auto views = beamsim::gossip::generate(random, gossip_config, peers);
-          for (size_t i = 0; i < peers.size(); ++i) {
-            dynamic_cast<beamsim::example::PeerGossip &>(
-                simulator.peer(peers.at(i)))
-                .gossip_.subscribe(topic_index, std::move(views.at(i)));
-          }
-        };
-        for (beamsim::example::GroupIndex group_index = 0;
-             group_index < roles.groups.size();
-             ++group_index) {
-          subscribe(beamsim::example::topicSignature(group_index),
-                    roles.groups.at(group_index).validators);
-        }
-        subscribe(beamsim::example::topic_snark1, roles.aggregators);
-        subscribe(beamsim::example::topic_snark2, roles.validators);
-      } else {
-        simulator.template addPeers<beamsim::example::PeerDirect>(
-            roles.validator_count, shared_state);
-      }
-      simulator.run(std::chrono::minutes{1});
-      std::println("time = {}ms, real = {}ms, {}",
-                   beamsim::ms(simulator.time()),
-                   beamsim::ms(t_run.time()),
-                   shared_state.done ? "success" : "failure");
-      std::println();
-    };
+  auto tests = [](beamsim::example::GroupIndex group_count,
+                beamsim::PeerIndex group_peer_count) {
+    auto roles = beamsim::example::Roles::make(
+        group_count * group_peer_count + 1, group_count);
+    beamsim::gossip::Config gossip_config{3, 1};
 
-    for (auto queue : {false, true}) {
-      std::println("gossip={} {}", gossip, queue ? "queue" : "delay");
-      beamsim::Random random;
-      beamsim::Delay delay{random};
-      beamsim::DelayNetwork delay_network{delay};
-      beamsim::QueueNetwork queue_network{delay};
-      beamsim::Simulator simulator{queue ? (beamsim::INetwork &)queue_network
+    std::println("{} groups of {} validators = {} validators",
+                 group_count,
+                 roles.validator_count / group_count,
+                 roles.validator_count);
+    std::println();
+
+    for (auto gossip : {false, true}) {
+      auto run = [&](beamsim::Random &random, auto &simulator) {
+        beamsim::Stopwatch t_run;
+        beamsim::example::SharedState shared_state{roles};
+        if (gossip) {
+          simulator.template addPeers<beamsim::example::PeerGossip>(
+              roles.validator_count, shared_state);
+          auto subscribe = [&](beamsim::gossip::TopicIndex topic_index,
+                               const std::vector<beamsim::PeerIndex> &peers) {
+            auto views =
+                beamsim::gossip::generate(random, gossip_config, peers);
+            for (size_t i = 0; i < peers.size(); ++i) {
+              dynamic_cast<beamsim::example::PeerGossip &>(
+                  simulator.peer(peers.at(i)))
+                  .gossip_.subscribe(topic_index, std::move(views.at(i)));
+            }
+          };
+          for (beamsim::example::GroupIndex group_index = 0;
+               group_index < roles.groups.size();
+               ++group_index) {
+            subscribe(beamsim::example::topicSignature(group_index),
+                      roles.groups.at(group_index).validators);
+          }
+          subscribe(beamsim::example::topic_snark1, roles.aggregators);
+          subscribe(beamsim::example::topic_snark2, roles.validators);
+        } else {
+          simulator.template addPeers<beamsim::example::PeerDirect>(
+              roles.validator_count, shared_state);
+        }
+        simulator.run(std::chrono::minutes{1});
+        std::println("time = {}ms, real = {}ms, {}",
+                     beamsim::ms(simulator.time()),
+                     beamsim::ms(t_run.time()),
+                     shared_state.done ? "success" : "failure");
+        std::println();
+      };
+
+      for (auto queue : {false, true}) {
+        std::println("gossip={} {}", gossip, queue ? "queue" : "delay");
+        beamsim::Random random;
+        beamsim::Delay delay{random};
+        beamsim::DelayNetwork delay_network{delay};
+        beamsim::QueueNetwork queue_network{delay};
+        beamsim::Simulator simulator{queue
+                                         ? (beamsim::INetwork &)queue_network
                                          : (beamsim::INetwork &)delay_network};
-      run(random, simulator);
-    }
+        run(random, simulator);
+      }
 
 #ifdef ns3_FOUND
-    {
-      std::println("gossip={} ns3", gossip);
-      beamsim::Random random;
-      beamsim::ns3_::Simulator simulator;
-      beamsim::ns3_::generate(random, simulator, roles);
-      run(random, simulator);
-    }
+      {
+        std::println("gossip={} ns3", gossip);
+        beamsim::Random random;
+        beamsim::ns3_::Simulator simulator;
+        beamsim::ns3_::generate(random, simulator, roles);
+        run(random, simulator);
+      }
 #endif
-  }
+    }
+    std::println();
+    std::println();
+  };
+
+  tests(4, 3);
+  tests(10, 10);
+  tests(20, 50);
 }
