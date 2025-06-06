@@ -16,6 +16,8 @@ namespace beamsim::example {
   constexpr auto kTimeSignature = std::chrono::milliseconds{20};
   constexpr auto kTimeSnark = std::chrono::milliseconds{200};
 
+  constexpr auto kStopOnCreateSnark2 = true;
+
   struct SharedState {
     const Roles &roles;
     PeerIndex snark2_received = 0;
@@ -79,6 +81,11 @@ namespace beamsim::example {
       aggregating_snark2.reset();
       simulator_.runAfter(kTimeSnark,
                           [this, snark2{std::move(snark2)}]() mutable {
+                            if (kStopOnCreateSnark2) {
+                              shared_state_.done = true;
+                              simulator_.stop();
+                              return;
+                            }
                             onMessageSnark2(snark2);
                             sendSnark2(std::move(snark2));
                           });
