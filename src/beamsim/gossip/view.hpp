@@ -17,8 +17,7 @@ namespace beamsim::gossip {
     auto ihaveTo(Random &random) const {
       auto non_mesh =
           std::span{peers}.subspan(std::min<size_t>(peers.size(), mesh_n));
-      std::vector<PeerIndex> r;
-      random.sample(non_mesh, mesh_n);
+      return random.sample(non_mesh, mesh_n);
     }
   };
   using Views = std::vector<View>;
