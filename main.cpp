@@ -1,119 +1,208 @@
+#include <beamsim/example/message.hpp>
+#include <beamsim/example/roles.hpp>
 #include <beamsim/gossip/generate.hpp>
 #include <beamsim/gossip/peer.hpp>
 #include <beamsim/network.hpp>
 #include <beamsim/simulator.hpp>
 #include <print>
 
+// TODO: const -> config
+
 namespace beamsim::example {
-  class Message : public IMessage {
-   public:
-    // IMessage
-    size_t size() const override {
-      return 1000;
-    }
-    void hash(MessageHasher &hasher) const override {
-      hasher.hash(peer_index);
-    }
+  constexpr auto kTimeSignature = std::chrono::milliseconds{20};
+  constexpr auto kTimeSnark = std::chrono::milliseconds{200};
 
-    Message(PeerIndex peer_index) : peer_index{peer_index} {}
-
-    PeerIndex peer_index;
-  };
-
-  struct State {
-    PeerIndex peer_count = 10;
-    PeerIndex aggregator = 0;
-
-    PeerIndex threshold() const {
-      return peer_count;  // * 2 / 3;
-    }
-    // multiple messages from gossip in single simulator tick
+  struct SharedState {
+    const Roles &roles;
+    PeerIndex snark2_received = 0;
     bool done = false;
-    PeerIndex received = 0;
-
-    void onReceived(ISimulator &simulator) {
-      if (done) {
-        return;
-      }
-      ++received;
-      std::println("time = {}ms, received {}/{}",
-                   simulator.time().count() / 1000,
-                   received,
-                   threshold());
-      if (received >= threshold()) {
-        done = true;
-        std::println("success");
-        simulator.stop();
-        return;
-      }
-    }
   };
 
-  class Peer : public IPeer {
+  class PeerBase : public IPeer {
    public:
-    Peer(ISimulator &simulator, PeerIndex index, State &state)
-        : IPeer{simulator, index}, state_{state} {}
+    PeerBase(ISimulator &simulator, PeerIndex index, SharedState &shared_state)
+        : IPeer{simulator, index},
+          shared_state_{shared_state},
+          group_index_{shared_state_.roles.group_of_validator.at(peer_index_)},
+          group_{shared_state_.roles.groups.at(group_index_)} {}
 
     // IPeer
     void onStart() override {
-      if (peer_index_ != state_.aggregator) {
-        // std::println("{} > {}", peer_index_, state_.aggregator);
-        simulator_.send(peer_index_,
-                        state_.aggregator,
-                        std::make_shared<Message>(peer_index_));
+      if (peer_index_ == group_.local_aggregator) {
+        aggregating_snark1.emplace();
+      }
+      if (peer_index_ == shared_state_.roles.global_aggregator) {
+        aggregating_snark2.emplace();
+      }
+      simulator_.runAfter(kTimeSignature, [this] {
+        MessageSignature signature{peer_index_};
+        onMessageSignature(signature);
+        sendSignature(std::move(signature));
+      });
+    }
+
+    virtual void sendSignature(MessageSignature message) = 0;
+    virtual void sendSnark1(MessageSnark1 message) = 0;
+    virtual void sendSnark2(MessageSnark2 message) = 0;
+
+    void onMessageSignature(const MessageSignature &message) {
+      if (not aggregating_snark1.has_value()) {
+        return;
+      }
+      aggregating_snark1->peer_indices.set(message.peer_index);
+      PeerIndex threshold = group_.validators.size();
+      if (aggregating_snark1->peer_indices.ones() < threshold) {
+        return;
+      }
+      auto snark1 = std::move(aggregating_snark1.value());
+      aggregating_snark1.reset();
+      simulator_.runAfter(kTimeSnark,
+                          [this, snark1{std::move(snark1)}]() mutable {
+                            onMessageSnark1(snark1);
+                            sendSnark1(std::move(snark1));
+                          });
+    }
+    void onMessageSnark1(const MessageSnark1 &message) {
+      if (not aggregating_snark2.has_value()) {
+        return;
+      }
+      aggregating_snark2->peer_indices.set(message.peer_indices);
+      PeerIndex threshold = shared_state_.roles.validator_count;
+      if (aggregating_snark2->peer_indices.ones() < threshold) {
+        return;
+      }
+      auto snark2 = std::move(aggregating_snark2.value());
+      aggregating_snark2.reset();
+      simulator_.runAfter(kTimeSnark,
+                          [this, snark2{std::move(snark2)}]() mutable {
+                            onMessageSnark2(snark2);
+                            sendSnark2(std::move(snark2));
+                          });
+    }
+    void onMessageSnark2(const MessageSnark2 &) {
+      if (snark2_received) {
+        return;
+      }
+      snark2_received = true;
+      if (shared_state_.done) {
+        return;
+      }
+      ++shared_state_.snark2_received;
+      PeerIndex threshold = shared_state_.roles.validator_count;
+      if (shared_state_.snark2_received < threshold) {
+        return;
+      }
+      shared_state_.done = true;
+      simulator_.stop();
+    }
+
+    SharedState &shared_state_;
+    GroupIndex group_index_;
+    const Roles::Group &group_;
+    bool snark2_received = false;
+    std::optional<MessageSnark1> aggregating_snark1;
+    std::optional<MessageSnark2> aggregating_snark2;
+  };
+
+  class PeerDirect : public PeerBase {
+    using PeerBase::PeerBase;
+
+    // IPeer
+    void onMessage(PeerIndex, MessagePtr any_message) override {
+      auto &message = dynamic_cast<Message &>(*any_message);
+      if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
+        onMessageSignature(*signature);
+      } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
+        onMessageSnark1(*snark1);
       } else {
-        state_.onReceived(simulator_);
+        auto &snark2 = std::get<MessageSnark2>(message.variant);
+        // local aggregator forwards snark2 from global aggregator to group
+        if (peer_index_ == group_.local_aggregator) {
+          for (auto &peer_index : group_.validators) {
+            if (peer_index == peer_index_) {
+              continue;
+            }
+            if (peer_index == shared_state_.roles.global_aggregator) {
+              continue;
+            }
+            send(peer_index, any_message);
+          }
+        }
+        onMessageSnark2(snark2);
       }
     }
-    void onMessage(PeerIndex from_peer, MessagePtr) override {
-      // std::println("{} < {}", peer_index_, from_peer);
-      if (peer_index_ != state_.aggregator) {
+
+    // PeerBase
+    void sendSignature(MessageSignature message) override {
+      if (peer_index_ == group_.local_aggregator) {
         return;
       }
-      state_.onReceived(simulator_);
+      send(group_.local_aggregator, std::make_shared<Message>(message));
     }
-
-   private:
-    State &state_;
-  };
-
-  class PeerGossip : public IPeer {
-   public:
-    PeerGossip(ISimulator &simulator,
-               PeerIndex index,
-               gossip::View &&view,
-               State &state)
-        : IPeer{simulator, index}, state_{state}, gossip_{*this} {
-      gossip_.subscribe(0, std::move(view));
+    void sendSnark1(MessageSnark1 message) override {
+      assert2(peer_index_ == group_.local_aggregator);
+      send(shared_state_.roles.global_aggregator,
+           std::make_shared<Message>(message));
     }
-
-    // IPeer
-    void onStart() override {
-      // std::println("{} > ...", peer_index_, state_.aggregator);
-      gossip_.gossip(0, std::make_shared<Message>(peer_index_));
-      if (peer_index_ == state_.aggregator) {
-        state_.onReceived(simulator_);
+    void sendSnark2(MessageSnark2 message) override {
+      assert2(peer_index_ == shared_state_.roles.global_aggregator);
+      auto any_message = std::make_shared<Message>(message);
+      for (auto &group : shared_state_.roles.groups) {
+        send(group.local_aggregator, any_message);
       }
     }
+  };
+
+  constexpr gossip::TopicIndex topic_snark1 = 0;
+  constexpr gossip::TopicIndex topic_snark2 = 1;
+  inline gossip::TopicIndex topicSignature(GroupIndex group_index) {
+    return 2 + group_index;
+  }
+
+  class PeerGossip : public PeerBase {
+   public:
+    using PeerBase::PeerBase;
+
+    // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
       gossip_.onMessage(
-          from_peer, any_message, [this](const MessagePtr &any_message) {
+          from_peer, any_message, [&](const MessagePtr &any_message) {
             auto &message = dynamic_cast<Message &>(*any_message);
-            // std::println("{} < ... < {}", peer_index_, message.peer_index);
-            if (peer_index_ != state_.aggregator) {
-              return;
+            if (auto *signature =
+                    std::get_if<MessageSignature>(&message.variant)) {
+              onMessageSignature(*signature);
+            } else if (auto *snark1 =
+                           std::get_if<MessageSnark1>(&message.variant)) {
+              onMessageSnark1(*snark1);
+            } else {
+              auto &snark2 = std::get<MessageSnark2>(message.variant);
+              onMessageSnark2(snark2);
             }
-            state_.onReceived(simulator_);
           });
     }
 
-   private:
-    State &state_;
-    gossip::Peer gossip_;
+    // PeerBase
+    void sendSignature(MessageSignature message) override {
+      gossip_.gossip(topicSignature(shared_state_.roles.group_of_validator.at(
+                         peer_index_)),
+                     std::make_shared<Message>(message));
+    }
+    void sendSnark1(MessageSnark1 message) override {
+      gossip_.gossip(topic_snark1, std::make_shared<Message>(message));
+    }
+    void sendSnark2(MessageSnark2 message) override {
+      gossip_.gossip(topic_snark2, std::make_shared<Message>(message));
+    }
+
+    gossip::Peer gossip_{*this};
   };
 }  // namespace beamsim::example
 
 int main() {
+  beamsim::example::GroupIndex group_count = 4;
+  auto roles = beamsim::example::Roles::make(group_count * 3 + 1, group_count);
+  beamsim::gossip::Config gossip_config{3, 1};
+
   for (auto gossip : {false, true}) {
     for (auto queue : {false, true}) {
       std::println("gossip={} queue={}", gossip, queue);
@@ -123,21 +212,37 @@ int main() {
       beamsim::QueueNetwork queue_network{delay};
       beamsim::Simulator simulator{queue ? (beamsim::INetwork &)queue_network
                                          : (beamsim::INetwork &)delay_network};
-      beamsim::example::State state{.peer_count = 10};
-      beamsim::gossip::Config gossip_config{3, 1};
+      beamsim::example::SharedState shared_state{roles};
       if (gossip) {
-        auto views =
-            beamsim::gossip::generate(random, gossip_config, state.peer_count);
-        for (auto &view : views) {
-          simulator.addPeer<beamsim::example::PeerGossip>(std::move(view),
-                                                          state);
+        simulator.addPeers<beamsim::example::PeerGossip>(roles.validator_count,
+                                                         shared_state);
+        auto subscribe = [&](beamsim::gossip::TopicIndex topic_index,
+                             const std::vector<beamsim::PeerIndex> &peers) {
+          auto views = beamsim::gossip::generate(random, gossip_config, peers);
+          for (size_t i = 0; i < peers.size(); ++i) {
+            dynamic_cast<beamsim::example::PeerGossip &>(
+                simulator.peer(peers.at(i)))
+                .gossip_.subscribe(topic_index, std::move(views.at(i)));
+          }
+        };
+        for (beamsim::example::GroupIndex group_index = 0;
+             group_index < roles.groups.size();
+             ++group_index) {
+          subscribe(beamsim::example::topicSignature(group_index),
+                    roles.groups.at(group_index).validators);
         }
-        views.clear();
+        subscribe(beamsim::example::topic_snark1, roles.aggregators);
+        subscribe(beamsim::example::topic_snark2, roles.validators);
       } else {
-        simulator.addPeers<beamsim::example::Peer>(state.peer_count, state);
+        simulator.addPeers<beamsim::example::PeerDirect>(roles.validator_count,
+                                                         shared_state);
       }
       simulator.run(std::chrono::minutes{1});
-      std::println("time = {}ms", simulator.time().count() / 1000);
+      std::println("time = {}ms, {}",
+                   std::chrono::duration_cast<std::chrono::milliseconds>(
+                       simulator.time())
+                       .count(),
+                   shared_state.done ? "success" : "failure");
       std::println();
     }
   }

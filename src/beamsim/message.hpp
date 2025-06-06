@@ -13,6 +13,11 @@ namespace beamsim {
     void hash(const T &v) {
       state_.update(&v, sizeof(v));
     }
+    template <typename T>
+      requires std::is_pod_v<T>
+    void hash(const std::vector<T> &v) {
+      state_.update(v.data(), v.size() * sizeof(T));
+    }
     MessageHash hash() const {
       return state_.digest();
     }
