@@ -1,12 +1,12 @@
 #pragma once
 
 #include <beamsim/example/roles.hpp>
-#include <beamsim/ns3/simulator.hpp>
+#include <beamsim/ns3/routing.hpp>
 #include <beamsim/random.hpp>
 
 namespace beamsim::ns3_ {
   inline void generate(Random &random,
-                       Simulator &simulator,
+                       Routing &routing,
                        const example::Roles &roles) {
     auto bitrate = [&](uint64_t min_mbps, uint64_t max_mpbs) {
       constexpr uint64_t mbps = 1000000;
@@ -28,14 +28,14 @@ namespace beamsim::ns3_ {
     PeerIndex backbone_router_count = 5;
     std::vector<PeerIndex> backbone;
     for (PeerIndex i = 0; i < backbone_router_count; ++i) {
-      backbone.emplace_back(simulator.addRouter());
+      backbone.emplace_back(routing.addRouter());
       for (PeerIndex j = 0; j < i; ++j) {
-        simulator.wireRouter(backbone.at(i),
-                             backbone.at(j),
-                             {
-                                 bitrate_backbone(),
-                                 delay_continental(),
-                             });
+        routing.wireRouter(backbone.at(i),
+                           backbone.at(j),
+                           {
+                               bitrate_backbone(),
+                               delay_continental(),
+                           });
       }
     }
 
@@ -46,15 +46,15 @@ namespace beamsim::ns3_ {
       auto &region = regions.emplace_back();
       PeerIndex count = random.random(1, 3);
       for (PeerIndex j = 0; j < count; ++j) {
-        region.emplace_back(simulator.addRouter());
+        region.emplace_back(routing.addRouter());
         for (auto parent :
              random.sample(std::span{backbone}, random.random(1, 2))) {
-          simulator.wireRouter(region[j],
-                               parent,
-                               {
-                                   bitrate_datacenter(),
-                                   delay_regional(),
-                               });
+          routing.wireRouter(region[j],
+                             parent,
+                             {
+                                 bitrate_datacenter(),
+                                 delay_regional(),
+                             });
         }
       }
       region.emplace_back();
@@ -63,25 +63,25 @@ namespace beamsim::ns3_ {
     std::vector<PeerIndex> subnet;
     for (PeerIndex i = 0; i < subnet_count; ++i) {
       auto &region = regions.at(i % regions.size());
-      subnet.emplace_back(simulator.addRouter());
-      simulator.wireRouter(subnet.at(i),
-                           random.pick(std::span{region}),
-                           {
-                               bitrate_business(),
-                               i % 2 == 0 ? delay_local() : delay_regional(),
-                           });
+      subnet.emplace_back(routing.addRouter());
+      routing.wireRouter(subnet.at(i),
+                         random.pick(std::span{region}),
+                         {
+                             bitrate_business(),
+                             i % 2 == 0 ? delay_local() : delay_regional(),
+                         });
     }
 
     std::vector<PeerIndex> peers;
     for (PeerIndex i = 0; i < roles.validator_count; ++i) {
-      peers.emplace_back(simulator.addPeerNode());
-      simulator.wirePeer(peers.at(i),
-                         subnet.at(roles.group_of_validator.at(i)),
-                         {
-                             random.random(1, 100) < 30 ? bitrate_business()
-                                                        : bitrate_consumer(),
-                             delay_local(),
-                         });
+      peers.emplace_back(routing.addPeerNode());
+      routing.wirePeer(peers.at(i),
+                       subnet.at(roles.group_of_validator.at(i)),
+                       {
+                           random.random(1, 100) < 30 ? bitrate_business()
+                                                      : bitrate_consumer(),
+                           delay_local(),
+                       });
     }
   }
 }  // namespace beamsim::ns3_

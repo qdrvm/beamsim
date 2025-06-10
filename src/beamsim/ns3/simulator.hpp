@@ -2,12 +2,10 @@
 
 #include <ns3/applications-module.h>
 #include <ns3/core-module.h>
-#include <ns3/internet-module.h>
 #include <ns3/network-module.h>
-#include <ns3/point-to-point-helper.h>
 
-#include <beamsim/assert.hpp>
 #include <beamsim/i_simulator.hpp>
+#include <beamsim/ns3/routing.hpp>
 #include <span>
 #include <unordered_map>
 
@@ -19,11 +17,6 @@ namespace beamsim::ns3_ {
   using BytesOut = std::span<uint8_t>;
   template <size_t N>
   using BytesN = std::array<uint8_t, N>;
-
-  struct WireProps {
-    uint64_t bitrate;
-    uint32_t delay_ms;
-  };
 
   void append(Bytes &l, auto &&r) {
     l.insert(l.end(), r.begin(), r.end());
@@ -264,10 +257,6 @@ namespace beamsim::ns3_ {
 
   class Simulator : public ISimulator {
    public:
-    Simulator() {
-      address_helper_.SetBase("10.1.1.0", "255.255.255.0");
-    }
-
     // ISimulator
     ~Simulator() override {
       ns3::Simulator::Destroy();
@@ -301,15 +290,14 @@ namespace beamsim::ns3_ {
       abort();
     }
 
-
     template <typename Peer, typename... A>
     void addPeer(A &&...a) {
       PeerIndex index = applications_.size();
-      assert2(applications_.size() < peers_.GetN());
+      assert2(applications_.size() < routing_.peers_.GetN());
       auto peer = std::make_unique<Peer>(*this, index, std::forward<A>(a)...);
       auto application = ns3::Create<Application>(*this, std::move(peer));
       applications_.emplace_back(application);
-      peers_.Get(index)->AddApplication(std::move(application));
+      routing_.peers_.Get(index)->AddApplication(std::move(application));
     }
     template <typename Peer, typename... A>
     void addPeers(PeerIndex count, A &&...a) {
@@ -322,73 +310,22 @@ namespace beamsim::ns3_ {
       return *applications_.at(peer_index)->peer_;
     }
 
-    PeerIndex addPeerNode() {
-      PeerIndex index = peers_.GetN();
-      peers_.Create(1);
-      internet_stack_.Install(peers_.Get(index));
-      return index;
-    }
-
-    PeerIndex addRouter() {
-      PeerIndex index = routers_.GetN();
-      routers_.Create(1);
-      internet_stack_.Install(routers_.Get(index));
-      return index;
-    }
-
-    auto _wire(ns3::Ptr<ns3::Node> node1,
-               ns3::Ptr<ns3::Node> node2,
-               const WireProps &wire) {
-      ns3::PointToPointHelper helper;
-      helper.SetDeviceAttribute("DataRate", ns3::DataRateValue{wire.bitrate});
-      helper.SetChannelAttribute(
-          "Delay", ns3::TimeValue{ns3::MilliSeconds(wire.delay_ms)});
-      auto interfaces = address_helper_.Assign(helper.Install(node1, node2));
-      address_helper_.NewNetwork();
-      return interfaces.GetAddress(0);
-    }
-
-    void wirePeer(PeerIndex peer, PeerIndex router, const WireProps &wire) {
-      assert2(not ips_.contains(peer));
-      auto ip = _wire(peers_.Get(peer), routers_.Get(router), wire);
-      ips_.emplace(peer, ip);
-      ip_peer_index_.emplace(ip, peer);
-    }
-
-    void wireRouter(PeerIndex router1,
-                    PeerIndex router2,
-                    const WireProps &wire) {
-      _wire(routers_.Get(router1), routers_.Get(router2), wire);
-    }
-
     void run(Time timeout) {
-      Stopwatch t_PopulateRoutingTables;
-      ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
-      std::println(
-          "PopulateRoutingTables for {} peers and {} routers took {}ms",
-          peers_.GetN(),
-          routers_.GetN(),
-          ms(t_PopulateRoutingTables.time()));
+      routing_.populateRoutingTables();
 
       ns3::Simulator::Stop(timeToNs3(timeout));
       ns3::Simulator::Run();
       ns3::Simulator::Stop();
     }
 
-    ns3::InternetStackHelper internet_stack_;
-    ns3::Ipv4AddressHelper address_helper_;
-    ns3::NodeContainer peers_;
-    ns3::NodeContainer routers_;
     std::vector<ns3::Ptr<Application>> applications_;
-    std::unordered_map<PeerIndex, ns3::Ipv4Address> ips_;
-    std::unordered_map<ns3::Ipv4Address, PeerIndex, ns3::Ipv4AddressHash>
-        ip_peer_index_;
+    Routing routing_;
     MessageId next_message_id_ = 0;
     std::unordered_map<MessageId, MessagePtr> messages_;
   };
 
   void Application::onAccept(SocketPtr socket, const ns3::Address &address) {
-    auto index = simulator_.ip_peer_index_.at(
+    auto index = simulator_.routing_.ip_peer_index_.at(
         ns3::InetSocketAddress::ConvertFrom(address).GetIpv4());
     auto &sockets = tcp_sockets_[index];
     assert2(not sockets.in);
@@ -444,8 +381,8 @@ namespace beamsim::ns3_ {
       return;
     }
     auto socket = makeSocket();
-    socket->Connect(
-        ns3::InetSocketAddress{simulator_.ips_.at(peer_index), kPort});
+    socket->Connect(ns3::InetSocketAddress{
+        simulator_.routing_.peer_ips_.at(peer_index), kPort});
     sockets.out = socket;
     sockets.write_out = true;
     add(peer_index, socket);

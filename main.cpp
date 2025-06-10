@@ -8,6 +8,7 @@
 
 #ifdef ns3_FOUND
 #include <beamsim/ns3/generate.hpp>
+#include <beamsim/ns3/simulator.hpp>
 #endif
 
 // TODO: const -> config
@@ -215,7 +216,7 @@ int main() {
 #endif
 
   auto tests = [](beamsim::example::GroupIndex group_count,
-                beamsim::PeerIndex group_peer_count) {
+                  beamsim::PeerIndex group_peer_count) {
     auto roles = beamsim::example::Roles::make(
         group_count * group_peer_count + 1, group_count);
     beamsim::gossip::Config gossip_config{3, 1};
@@ -276,11 +277,14 @@ int main() {
       }
 
 #ifdef ns3_FOUND
-      {
-        std::println("gossip={} ns3", gossip);
+      for (auto static_routing : {true, false}) {
+        std::println("gossip={} ns3 routing={}",
+                     gossip,
+                     static_routing ? "static" : "global");
         beamsim::Random random;
         beamsim::ns3_::Simulator simulator;
-        beamsim::ns3_::generate(random, simulator, roles);
+        simulator.routing_.static_routing_ = static_routing;
+        beamsim::ns3_::generate(random, simulator.routing_, roles);
         run(random, simulator);
       }
 #endif
