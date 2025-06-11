@@ -27,7 +27,7 @@ namespace beamsim::gossip {
         if (not views_.contains(publish.topic_index)) {
           continue;
         }
-        auto message_hash = hashMessage(*publish.message);
+        auto message_hash = publish.message->hash();
         promises_.erase(message_hash);
         if (not duplicate_cache_.emplace(message_hash).second) {
           continue;
@@ -56,7 +56,7 @@ namespace beamsim::gossip {
     }
 
     void gossip(TopicIndex topic_index, MessagePtr any_message) {
-      auto message_hash = hashMessage(*any_message);
+      auto message_hash = any_message->hash();
       if (not duplicate_cache_.emplace(message_hash).second) {
         return;
       }

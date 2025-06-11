@@ -210,8 +210,10 @@ namespace beamsim::example {
   };
 }  // namespace beamsim::example
 
-int main() {
-#ifndef ns3_FOUND
+int main(int argc, char **argv) {
+#ifdef ns3_FOUND
+  MPI_Init(&argc, &argv);
+#else
   std::println("ns3 not found");
 #endif
 
@@ -221,11 +223,13 @@ int main() {
         group_count * group_peer_count + 1, group_count);
     beamsim::gossip::Config gossip_config{3, 1};
 
-    std::println("{} groups of {} validators = {} validators",
-                 group_count,
-                 roles.validator_count / group_count,
-                 roles.validator_count);
-    std::println();
+    if (beamsim::mpiIsMain()) {
+      std::println("{} groups of {} validators = {} validators",
+                   group_count,
+                   roles.validator_count / group_count,
+                   roles.validator_count);
+      std::println();
+    }
 
     for (auto gossip : {false, true}) {
       auto run = [&](beamsim::Random &random, auto &simulator) {
@@ -239,8 +243,12 @@ int main() {
             auto views =
                 beamsim::gossip::generate(random, gossip_config, peers);
             for (size_t i = 0; i < peers.size(); ++i) {
+              auto &peer_index = peers.at(i);
+              if (not simulator.isLocalPeer(peer_index)) {
+                continue;
+              }
               dynamic_cast<beamsim::example::PeerGossip &>(
-                  simulator.peer(peers.at(i)))
+                  simulator.peer(peer_index))
                   .gossip_.subscribe(topic_index, std::move(views.at(i)));
             }
           };
@@ -257,43 +265,62 @@ int main() {
               roles.validator_count, shared_state);
         }
         simulator.run(std::chrono::minutes{1});
-        std::println("time = {}ms, real = {}ms, {}",
-                     beamsim::ms(simulator.time()),
-                     beamsim::ms(t_run.time()),
-                     shared_state.done ? "success" : "failure");
-        std::println();
+        auto done = beamsim::mpiAny(shared_state.done);
+        if (beamsim::mpiIsMain()) {
+          std::println("time = {}ms, real = {}ms, {}",
+                       beamsim::ms(simulator.time()),
+                       beamsim::ms(t_run.time()),
+                       done ? "success" : "failure");
+          std::println();
+        }
       };
 
-      for (auto queue : {false, true}) {
-        std::println("gossip={} {}", gossip, queue ? "queue" : "delay");
-        beamsim::Random random;
-        beamsim::Delay delay{random};
-        beamsim::DelayNetwork delay_network{delay};
-        beamsim::QueueNetwork queue_network{delay};
-        beamsim::Simulator simulator{queue
-                                         ? (beamsim::INetwork &)queue_network
-                                         : (beamsim::INetwork &)delay_network};
-        run(random, simulator);
+      if (beamsim::mpiIsMain()) {
+        for (auto queue : {false, true}) {
+          std::println("gossip={} {}", gossip, queue ? "queue" : "delay");
+          beamsim::Random random;
+          beamsim::Delay delay{random};
+          beamsim::DelayNetwork delay_network{delay};
+          beamsim::QueueNetwork queue_network{delay};
+          beamsim::Simulator simulator{
+              queue ? (beamsim::INetwork &)queue_network
+                    : (beamsim::INetwork &)delay_network};
+          run(random, simulator);
+        }
       }
 
 #ifdef ns3_FOUND
-      for (auto static_routing : {true, false}) {
-        std::println("gossip={} ns3 routing={}",
-                     gossip,
-                     static_routing ? "static" : "global");
+      for (auto static_routing : {true}) {
+        if (beamsim::mpiIsMain()) {
+          std::println("gossip={} ns3 routing={} mpi={}",
+                       gossip,
+                       static_routing ? "static" : "global",
+                       beamsim::mpiSize());
+        }
         beamsim::Random random;
         beamsim::ns3_::Simulator simulator;
         simulator.routing_.static_routing_ = static_routing;
         beamsim::ns3_::generate(random, simulator.routing_, roles);
+        simulator.message_decode_ = beamsim::example::Message::decode;
+        if (gossip) {
+          beamsim::gossip::message_decode = simulator.message_decode_;
+          simulator.message_decode_ = beamsim::gossip::Message::decode;
+        }
         run(random, simulator);
       }
 #endif
     }
-    std::println();
-    std::println();
+    if (beamsim::mpiIsMain()) {
+      std::println();
+      std::println();
+    }
   };
 
   tests(4, 3);
   tests(10, 10);
   tests(20, 50);
+
+#ifdef ns3_FOUND
+  MPI_Finalize();
+#endif
 }

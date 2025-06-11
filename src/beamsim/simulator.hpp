@@ -72,6 +72,10 @@ namespace beamsim {
       return *peers_.at(peer_index);
     }
 
+    bool isLocalPeer(PeerIndex) const {
+      return true;
+    }
+
    private:
     INetwork &network_;
     bool stop_ = false;

@@ -6,6 +6,7 @@
 #include <ns3/point-to-point-helper.h>
 
 #include <beamsim/assert.hpp>
+#include <beamsim/ns3/mpi.hpp>
 #include <beamsim/peer_index.hpp>
 #include <beamsim/time.hpp>
 #include <unordered_set>
@@ -114,9 +115,9 @@ namespace beamsim::ns3_ {
       return helper.Install(node1, node2);
     }
 
-    PeerIndex _addNode(ns3::NodeContainer &nodes) {
+    PeerIndex _addNode(ns3::NodeContainer &nodes, MpiIndex mpi_index) {
       PeerIndex index = nodes.GetN();
-      nodes.Create(1);
+      nodes.Create(1, mpi_index);
       internet_stack_.Install(nodes.Get(index));
       if (static_routing_) {
         auto routing = ns3::Create<ns3::Ipv4StaticRouting>();
@@ -127,12 +128,12 @@ namespace beamsim::ns3_ {
       return index;
     }
 
-    PeerIndex addPeerNode() {
-      return _addNode(peers_);
+    PeerIndex addPeerNode(MpiIndex mpi_index) {
+      return _addNode(peers_, mpi_index);
     }
 
-    PeerIndex addRouter() {
-      return _addNode(routers_);
+    PeerIndex addRouter(MpiIndex mpi_index) {
+      return _addNode(routers_, mpi_index);
     }
 
     auto _wireGlobal(ns3::Ptr<ns3::Node> node1,
@@ -196,14 +197,18 @@ namespace beamsim::ns3_ {
       } else {
         Stopwatch t_PopulateRoutingTables;
         ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
-        std::println(
-            "PopulateRoutingTables for {} peers and {} routers took {}ms",
-            peers_.GetN(),
-            routers_.GetN(),
-            ms(t_PopulateRoutingTables.time()));
+        if (mpiIsMain()) {
+          std::println(
+              "PopulateRoutingTables for {} peers and {} routers took {}ms",
+              peers_.GetN(),
+              routers_.GetN(),
+              ms(t_PopulateRoutingTables.time()));
+        }
       }
-      std::println("routing table rules: {}",
-                   ns3_::countRoutingTableRules(routers_));
+      if (mpiIsMain()) {
+        std::println("routing table rules: {}",
+                     ns3_::countRoutingTableRules(routers_));
+      }
     }
 
     void populateStaticRoutingTables() {

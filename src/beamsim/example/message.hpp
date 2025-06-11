@@ -11,11 +11,11 @@ namespace beamsim::example {
   constexpr size_t kSizeSnark = 131072;
 
   struct BitSet {
-    size_t byteSize() const {
-      return limbs_.size() * sizeof(Limb);
+    friend void encodeTo(MessageEncodeTo &to, const BitSet &v) {
+      encodeTo(to, v.limbs_);
     }
-    void hash(MessageHasher &hasher) const {
-      hasher.hash(limbs_);
+    friend void decodeFrom(MessageDecodeFrom &from, BitSet &v) {
+      decodeFrom(from, v.limbs_);
     }
 
     void set(PeerIndex i) {
@@ -64,24 +64,41 @@ namespace beamsim::example {
     Message(Variant variant) : variant{std::move(variant)} {}
 
     // IMessage
-    MessageSize size() const override {
-      if (auto *signature = std::get_if<MessageSignature>(&variant)) {
-        return sizeof(signature->peer_index) + kSizeSignature;
-      } else if (auto *snark1 = std::get_if<MessageSnark1>(&variant)) {
-        return snark1->peer_indices.byteSize() + kSizeSnark;
+    MessageSize padding() const override {
+      if (std::holds_alternative<MessageSignature>(variant)) {
+        return kSizeSignature;
+      } else if (std::holds_alternative<MessageSnark1>(variant)) {
+        return kSizeSnark;
       } else {
-        auto &snark2 = std::get<MessageSnark2>(variant);
-        return snark2.peer_indices.byteSize() + kSizeSnark;
+        std::get<MessageSnark2>(variant);
+        return kSizeSnark;
       }
     }
-    void hash(MessageHasher &hasher) const override {
+    void encode(MessageEncodeTo &to) const override {
+      encodeTo(to, (uint8_t)variant.index());
       if (auto *signature = std::get_if<MessageSignature>(&variant)) {
-        hasher.hash(signature->peer_index);
+        encodeTo(to, signature->peer_index);
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&variant)) {
-        snark1->peer_indices.hash(hasher);
+        encodeTo(to, snark1->peer_indices);
       } else {
         auto &snark2 = std::get<MessageSnark2>(variant);
-        snark2.peer_indices.hash(hasher);
+        encodeTo(to, snark2.peer_indices);
+      }
+    }
+    static MessagePtr decode(MessageDecodeFrom &from) {
+      auto i = from.get<uint8_t>();
+      if (i == 0) {
+        MessageSignature signature;
+        decodeFrom(from, signature.peer_index);
+        return std::make_shared<Message>(std::move(signature));
+      } else if (i == 1) {
+        MessageSnark1 snark1;
+        decodeFrom(from, snark1.peer_indices);
+        return std::make_shared<Message>(std::move(snark1));
+      } else {
+        MessageSnark2 snark2;
+        decodeFrom(from, snark2.peer_indices);
+        return std::make_shared<Message>(std::move(snark2));
       }
     }
 

@@ -5,7 +5,21 @@
 #include <beamsim/peer_index.hpp>
 
 namespace beamsim::gossip {
+  // hack
+  MessageDecodeFn message_decode;
+
   struct Publish {
+    friend void encodeTo(MessageEncodeTo &to, const Publish &v) {
+      encodeTo(to, v.topic_index);
+      encodeTo(to, v.origin);
+      v.message->encode(to);
+    }
+    friend void decodeFrom(MessageDecodeFrom &from, Publish &v) {
+      decodeFrom(from, v.topic_index);
+      decodeFrom(from, v.origin);
+      v.message = message_decode(from);
+    }
+
     TopicIndex topic_index;
     PeerIndex origin;
     MessagePtr message;
@@ -14,19 +28,24 @@ namespace beamsim::gossip {
   class Message : public IMessage {
    public:
     // IMessage
-    MessageSize size() const override {
-      MessageSize size = 0;
-      size += publish.size() * sizeof(Publish::topic_index);
-      size += publish.size() * sizeof(Publish::origin);
+    MessageSize padding() const override {
+      size_t padding = 0;
       for (auto &publish : this->publish) {
-        size += publish.message->size();
+        padding += publish.message->padding();
       }
-      size += ihave.size() * sizeof(MessageHash);
-      size += iwant.size() * sizeof(MessageHash);
-      return size;
+      return padding;
     }
-    void hash(MessageHasher &) const override {
-      abort();
+    void encode(MessageEncodeTo &to) const override {
+      encodeTo(to, publish);
+      encodeTo(to, ihave);
+      encodeTo(to, iwant);
+    }
+    static MessagePtr decode(MessageDecodeFrom &from) {
+      auto message = std::make_shared<Message>();
+      decodeFrom(from, message->publish);
+      decodeFrom(from, message->ihave);
+      decodeFrom(from, message->iwant);
+      return message;
     }
 
     std::vector<Publish> publish;

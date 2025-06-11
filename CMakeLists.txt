@@ -23,6 +23,8 @@ target_include_directories(main PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
 find_package(ns3 CONFIG)
 if(ns3_FOUND)
+  find_package(MPI REQUIRED)
+
   target_compile_definitions(main PRIVATE ns3_FOUND)
   target_link_libraries(main
     ns3::applications

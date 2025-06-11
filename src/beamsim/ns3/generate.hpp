@@ -25,10 +25,13 @@ namespace beamsim::ns3_ {
     auto delay_regional = delay(5, 25);
     auto delay_continental = delay(20, 80);
 
+    MpiIndex mpi_routers = 0;
+    auto mpi_subnet = [](MpiIndex i) { return (1 + i) % mpiSize(); };
+
     PeerIndex backbone_router_count = 5;
     std::vector<PeerIndex> backbone;
     for (PeerIndex i = 0; i < backbone_router_count; ++i) {
-      backbone.emplace_back(routing.addRouter());
+      backbone.emplace_back(routing.addRouter(mpi_routers));
       for (PeerIndex j = 0; j < i; ++j) {
         routing.wireRouter(backbone.at(i),
                            backbone.at(j),
@@ -46,7 +49,7 @@ namespace beamsim::ns3_ {
       auto &region = regions.emplace_back();
       PeerIndex count = random.random(1, 3);
       for (PeerIndex j = 0; j < count; ++j) {
-        region.emplace_back(routing.addRouter());
+        region.emplace_back(routing.addRouter(mpi_routers));
         for (auto parent :
              random.sample(std::span{backbone}, random.random(1, 2))) {
           routing.wireRouter(region[j],
@@ -63,7 +66,7 @@ namespace beamsim::ns3_ {
     std::vector<PeerIndex> subnet;
     for (PeerIndex i = 0; i < subnet_count; ++i) {
       auto &region = regions.at(i % regions.size());
-      subnet.emplace_back(routing.addRouter());
+      subnet.emplace_back(routing.addRouter(mpi_subnet(i)));
       routing.wireRouter(subnet.at(i),
                          random.pick(std::span{region}),
                          {
@@ -74,9 +77,10 @@ namespace beamsim::ns3_ {
 
     std::vector<PeerIndex> peers;
     for (PeerIndex i = 0; i < roles.validator_count; ++i) {
-      peers.emplace_back(routing.addPeerNode());
+      auto subnet_index = roles.group_of_validator.at(i);
+      peers.emplace_back(routing.addPeerNode(mpi_subnet(subnet_index)));
       routing.wirePeer(peers.at(i),
-                       subnet.at(roles.group_of_validator.at(i)),
+                       subnet.at(subnet_index),
                        {
                            random.random(1, 100) < 30 ? bitrate_business()
                                                       : bitrate_consumer(),

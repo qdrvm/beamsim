@@ -2,25 +2,17 @@
 
 #include <ns3/applications-module.h>
 #include <ns3/core-module.h>
+#include <ns3/mpi-interface.h>
 #include <ns3/network-module.h>
 
 #include <beamsim/i_simulator.hpp>
 #include <beamsim/ns3/routing.hpp>
-#include <span>
 #include <unordered_map>
 
 namespace beamsim::ns3_ {
   using MessageId = uint64_t;
   using SocketPtr = ns3::Ptr<ns3::Socket>;
-  using Bytes = std::vector<uint8_t>;
-  using BytesIn = std::span<const uint8_t>;
   using BytesOut = std::span<uint8_t>;
-  template <size_t N>
-  using BytesN = std::array<uint8_t, N>;
-
-  void append(Bytes &l, auto &&r) {
-    l.insert(l.end(), r.begin(), r.end());
-  }
 
   constexpr uint16_t kPort = 10000;
 
@@ -28,20 +20,6 @@ namespace beamsim::ns3_ {
     static_assert(std::is_same_v<Time, std::chrono::microseconds>);
     return ns3::MicroSeconds(time.count());
   }
-
-  template <std::integral T>
-  struct encode_ne {
-    BytesN<sizeof(T)> bytes{};
-    encode_ne() = default;
-    encode_ne(T v) {
-      memcpy(bytes.data(), &v, sizeof(T));
-    }
-    T value() const {
-      T v;
-      memcpy(&v, bytes.data(), sizeof(T));
-      return v;
-    }
-  };
 
   struct Buffer {
     Bytes buffer_;
@@ -111,6 +89,7 @@ namespace beamsim::ns3_ {
   struct Reading {
     struct Frame {
       Header header;
+      Bytes data;
       MessageSize padding;
     };
 
@@ -129,18 +108,19 @@ namespace beamsim::ns3_ {
       return queue_.empty();
     }
 
-    void write(MessageId message_id, const IMessage &message) {
-      // TODO: encode message
+    void write(std::optional<MessageId> message_id, const IMessage &message) {
       Item item;
-      auto message_size = message.size();
+      auto message_data = message.encode();
+      auto message_size = message_data.size() + message.padding();
       Header header;
       header.message_size = message_size;
-      header.message_id = message_id;
-      header.data_size = 0;
+      header.message_id = message_id.value_or(0);
+      header.data_size = message_data.size();
       item.size = header.size() + message_size;
       append(item.data, header.message_size.bytes);
       append(item.data, header.message_id.bytes);
       append(item.data, header.data_size.bytes);
+      append(item.data, message_data);
       queue_.emplace_back(std::move(item));
     }
 
@@ -232,19 +212,28 @@ namespace beamsim::ns3_ {
         assert2(socket->Send(packet) == static_cast<int>(packet->GetSize()));
       }
     }
+    void onConnect(SocketPtr socket) {
+      pollWrite(socket);
+    }
+    void onConnectError(SocketPtr) {
+      abort();
+    }
     void connect(PeerIndex peer_index);
     void send(PeerIndex peer_index,
-              MessageId message_id,
+              std::optional<MessageId> message_id,
               const IMessage &message) {
       assert2(peer_index != peer_->peer_index_);
       auto &sockets = tcp_sockets_[peer_index];
-      if (not sockets.write()) {
+      auto connected = sockets.write() != nullptr;
+      if (not connected) {
         connect(peer_index);
       }
       auto &socket = sockets.write();
       auto &state = tcp_socket_state_.at(socket);
       state.writing.write(message_id, message);
-      pollWrite(socket);
+      if (connected) {
+        pollWrite(socket);
+      }
     }
 
     Simulator &simulator_;
@@ -257,9 +246,18 @@ namespace beamsim::ns3_ {
 
   class Simulator : public ISimulator {
    public:
+    Simulator() {
+      if (mpiSize() > 0) {
+        ns3::MpiInterface::Enable(MPI_COMM_WORLD);
+      }
+    }
+
     // ISimulator
     ~Simulator() override {
       ns3::Simulator::Destroy();
+      if (mpiSize() > 0) {
+        ns3::MpiInterface::Disable();
+      }
     }
     Time time() const override {
       static_assert(std::is_same_v<Time, std::chrono::microseconds>);
@@ -281,9 +279,12 @@ namespace beamsim::ns3_ {
     void send(PeerIndex from_peer,
               PeerIndex to_peer,
               MessagePtr message) override {
-      auto message_id = next_message_id_;
-      messages_.emplace(message_id, message);
-      ++next_message_id_;
+      std::optional<MessageId> message_id;
+      if (cache_messages_ and isLocalPeer(to_peer)) {
+        message_id = next_message_id_;
+        messages_.emplace(message_id.value(), message);
+        ++next_message_id_;
+      }
       applications_.at(from_peer)->send(to_peer, message_id, *message);
     }
     void _receive(PeerIndex, PeerIndex, MessagePtr) override {
@@ -294,10 +295,12 @@ namespace beamsim::ns3_ {
     void addPeer(A &&...a) {
       PeerIndex index = applications_.size();
       assert2(applications_.size() < routing_.peers_.GetN());
-      auto peer = std::make_unique<Peer>(*this, index, std::forward<A>(a)...);
-      auto application = ns3::Create<Application>(*this, std::move(peer));
-      applications_.emplace_back(application);
-      routing_.peers_.Get(index)->AddApplication(std::move(application));
+      auto &application = applications_.emplace_back();
+      if (isLocalPeer(index)) {
+        auto peer = std::make_unique<Peer>(*this, index, std::forward<A>(a)...);
+        application = ns3::Create<Application>(*this, std::move(peer));
+        routing_.peers_.Get(index)->AddApplication(std::move(application));
+      }
     }
     template <typename Peer, typename... A>
     void addPeers(PeerIndex count, A &&...a) {
@@ -318,10 +321,16 @@ namespace beamsim::ns3_ {
       ns3::Simulator::Stop();
     }
 
+    bool isLocalPeer(PeerIndex peer_index) const {
+      return routing_.peers_.Get(peer_index)->GetSystemId() == mpiIndex();
+    }
+
+    bool cache_messages_ = true;
     std::vector<ns3::Ptr<Application>> applications_;
     Routing routing_;
     MessageId next_message_id_ = 0;
     std::unordered_map<MessageId, MessagePtr> messages_;
+    MessageDecodeFn message_decode_;
   };
 
   void Application::onAccept(SocketPtr socket, const ns3::Address &address) {
@@ -341,35 +350,55 @@ namespace beamsim::ns3_ {
       packet->CopyData(reading_.data(), reading_.size());
       state.reading.buffer_.write(reading_);
       while (true) {
+        auto &buffer = state.reading.buffer_;
         if (state.reading.frame_.has_value()) {
-          // TODO: read data
-          if (state.reading.frame_->padding > 0) {
-            auto n = std::min<MessageSize>(state.reading.frame_->padding,
-                                           state.reading.buffer_.size());
+          auto &frame = state.reading.frame_.value();
+          auto want_data = frame.header.data_size.value() - frame.data.size();
+          if (want_data > 0) {
+            auto n = std::min<MessageSize>(want_data, buffer.size());
             if (n == 0) {
               break;
             }
-            state.reading.buffer_.read(n);
-            state.reading.frame_->padding -= n;
+            frame.data.resize(frame.data.size() + n);
+            buffer.peek(std::span{frame.data}.subspan(frame.data.size() - n));
+            buffer.read(n);
+            continue;
+          }
+          if (frame.padding > 0) {
+            auto n = std::min<MessageSize>(frame.padding, buffer.size());
+            if (n == 0) {
+              break;
+            }
+            buffer.read(n);
+            frame.padding -= n;
             continue;
           }
           auto item = std::exchange(state.reading.frame_, {}).value();
-          // TODO: decode message
-          auto node =
-              simulator_.messages_.extract(item.header.message_id.value());
-          assert2(node);
-          peer_->onMessage(state.peer_index, std::move(node.mapped()));
+          MessagePtr message;
+          if (simulator_.cache_messages_
+              and simulator_.isLocalPeer(state.peer_index)) {
+            auto node =
+                simulator_.messages_.extract(item.header.message_id.value());
+            assert2(node);
+            message = std::move(node.mapped());
+          } else {
+            MessageDecodeFrom data{item.data};
+            message = simulator_.message_decode_(data);
+          }
+          peer_->onMessage(state.peer_index, std::move(message));
           continue;
         }
         Header header;
-        if (state.reading.buffer_.size() < header.size()) {
+        if (buffer.size() < header.size()) {
           break;
         }
-        state.reading.buffer_.read(header.message_size.bytes);
-        state.reading.buffer_.read(header.message_id.bytes);
-        state.reading.buffer_.read(header.data_size.bytes);
+        buffer.read(header.message_size.bytes);
+        buffer.read(header.message_id.bytes);
+        buffer.read(header.data_size.bytes);
         state.reading.frame_.emplace(
-            header, header.message_size.value() - header.data_size.value());
+            header,
+            Bytes{},
+            header.message_size.value() - header.data_size.value());
       }
     }
   }
@@ -385,6 +414,9 @@ namespace beamsim::ns3_ {
         simulator_.routing_.peer_ips_.at(peer_index), kPort});
     sockets.out = socket;
     sockets.write_out = true;
+    socket->SetConnectCallback(
+        MakeCallback(&Application::onConnect, this),
+        MakeCallback(&Application::onConnectError, this));
     add(peer_index, socket);
   }
 }  // namespace beamsim::ns3_
