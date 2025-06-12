@@ -1,6 +1,8 @@
 #pragma once
 
+#ifdef ns3_FOUND
 #include <mpi.h>
+#endif
 
 #include <cstdint>
 
@@ -9,8 +11,10 @@ namespace beamsim {
 
   inline MpiIndex mpiIndex() {
     static MpiIndex r = [] {
-      int r;
+      int r = 0;
+#ifdef ns3_FOUND
       MPI_Comm_rank(MPI_COMM_WORLD, &r);
+#endif
       return r;
     }();
     return r;
@@ -18,8 +22,10 @@ namespace beamsim {
 
   inline MpiIndex mpiSize() {
     static MpiIndex r = [] {
-      int r;
+      int r = 1;
+#ifdef ns3_FOUND
       MPI_Comm_size(MPI_COMM_WORLD, &r);
+#endif
       return r;
     }();
     return r;
@@ -30,8 +36,10 @@ namespace beamsim {
   }
 
   inline int mpiAny(bool x) {
-    bool r = false;
+    bool r = x;
+#ifdef ns3_FOUND
     MPI_Allreduce(&x, &r, 1, MPI_CXX_BOOL, MPI_LOR, MPI_COMM_WORLD);
+#endif
     return r;
   }
 }  // namespace beamsim

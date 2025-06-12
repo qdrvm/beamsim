@@ -289,8 +289,8 @@ void run_simulation(const SimulationConfig &config) {
       }
       break;
     }
-#ifdef ns3_FOUND
     case SimulationConfig::Backend::NS3: {
+#ifdef ns3_FOUND
       beamsim::ns3_::Simulator simulator;
       beamsim::ns3_::generate(random, simulator.routing_, roles);
       switch (config.topology) {
@@ -305,9 +305,11 @@ void run_simulation(const SimulationConfig &config) {
         }
       }
       run(simulator);
+#else
+      abort();
+#endif
       break;
     }
-#endif
   }
 }
 
@@ -322,12 +324,12 @@ int main(int argc, char **argv) {
 
   if (!config.parse_args(argc, argv)) {
     config.print_usage(argv[0]);
-    return 1;
+    return EXIT_FAILURE;
   }
 
   if (config.help) {
     config.print_usage(argv[0]);
-    return 0;
+    return EXIT_SUCCESS;
   }
 
   config.validate();
@@ -339,5 +341,5 @@ int main(int argc, char **argv) {
   MPI_Finalize();
 #endif
 
-  return 0;
+  return EXIT_SUCCESS;
 }

@@ -111,10 +111,12 @@ struct SimulationConfig {
   void validate() {
 #ifndef ns3_FOUND
     if (backend == Backend::NS3) {
-      std::println(
-          "Warning: ns3 backend requested but ns3 not found, falling back to "
-          "delay");
-      backend = Backend::DELAY;
+      if (beamsim::mpiIsMain()) {
+        std::println(
+            "Warning: ns3 backend requested but simulator is build without ns3 "
+            "support, install ns3 and rebuild simulator with ns3 support");
+      }
+      exit(EXIT_FAILURE);
     }
 #endif
   }
