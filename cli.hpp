@@ -137,6 +137,11 @@ struct SimulationConfig {
     std::println("  Validators per group: {}", validators_per_group);
     std::println("  Total validators: {}",
                  group_count * validators_per_group + 1);
+    if (beamsim::mpiSize() > 1) {
+      std::println("  MPI: {}", beamsim::mpiSize());
+    } else {
+      std::println("  MPI: no");
+    }
     std::println();
   }
 };
