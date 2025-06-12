@@ -2,6 +2,8 @@
 #include <beamsim/example/roles.hpp>
 #include <beamsim/gossip/generate.hpp>
 #include <beamsim/gossip/peer.hpp>
+#include <beamsim/grid/grid.hpp>
+#include <beamsim/grid/message.hpp>
 #include <beamsim/network.hpp>
 #include <beamsim/simulator.hpp>
 #include <print>
@@ -210,6 +212,79 @@ namespace beamsim::example {
 
     gossip::Peer gossip_{*this};
   };
+
+  class PeerGrid : public PeerBase {
+   public:
+    using PeerBase::PeerBase;
+
+    // IPeer
+    void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      auto &grid_message = dynamic_cast<grid::Message &>(*any_message);
+      auto &message = dynamic_cast<Message &>(*grid_message.message);
+      if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
+        forward(group_.validators,
+                group_.index_of_validators,
+                from_peer,
+                grid_message);
+        onMessageSignature(*signature);
+      } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
+        forward(shared_state_.roles.aggregators,
+                shared_state_.roles.index_of_aggregators,
+                from_peer,
+                grid_message);
+        onMessageSnark1(*snark1);
+      } else {
+        auto &snark2 = std::get<MessageSnark2>(message.variant);
+        forward(shared_state_.roles.validators,
+                shared_state_.roles.validators,
+                from_peer,
+                grid_message);
+        onMessageSnark2(snark2);
+      }
+    }
+
+    // PeerBase
+    void sendSignature(MessageSignature message) override {
+      publish(group_.validators,
+              group_.index_of_validators,
+              std::make_shared<Message>(message));
+    }
+    void sendSnark1(MessageSnark1 message) override {
+      publish(shared_state_.roles.aggregators,
+              shared_state_.roles.index_of_aggregators,
+              std::make_shared<Message>(message));
+    }
+    void sendSnark2(MessageSnark2 message) override {
+      publish(shared_state_.roles.validators,
+              shared_state_.roles.validators,
+              std::make_shared<Message>(message));
+    }
+
+    void publish(const std::vector<PeerIndex> &peers,
+                 auto &index_of,
+                 MessagePtr message) {
+      auto grid_message = std::make_shared<grid::Message>(message, 2);
+      auto peer = index_of.at(peer_index_);
+      grid::Grid(peers.size()).publishTo(peer, [&](PeerIndex i) {
+        send(peers.at(i), grid_message);
+      });
+    }
+    void forward(const std::vector<PeerIndex> &peers,
+                 auto &index_of,
+                 PeerIndex from_peer,
+                 const grid::Message &message) {
+      if (message.ttl <= 1) {
+        return;
+      }
+      auto message2 =
+          std::make_shared<grid::Message>(message.message, message.ttl - 1);
+      auto peer = index_of.at(peer_index_);
+      grid::Grid(peers.size())
+          .forwardTo(index_of.at(from_peer), peer, [&](PeerIndex i) {
+            send(peers.at(i), message2);
+          });
+    }
+  };
 }  // namespace beamsim::example
 
 void run_simulation(const SimulationConfig &config) {
@@ -254,6 +329,11 @@ void run_simulation(const SimulationConfig &config) {
         }
         subscribe(beamsim::example::topic_snark1, roles.aggregators);
         subscribe(beamsim::example::topic_snark2, roles.validators);
+        break;
+      }
+      case SimulationConfig::Topology::GRID: {
+        simulator.template addPeers<beamsim::example::PeerGrid>(
+            roles.validator_count, shared_state);
         break;
       }
     }
@@ -301,6 +381,11 @@ void run_simulation(const SimulationConfig &config) {
         case SimulationConfig::Topology::GOSSIP: {
           beamsim::gossip::message_decode = beamsim::example::Message::decode;
           simulator.message_decode_ = beamsim::gossip::Message::decode;
+          break;
+        }
+        case SimulationConfig::Topology::GRID: {
+          beamsim::grid::message_decode = beamsim::example::Message::decode;
+          simulator.message_decode_ = beamsim::grid::Message::decode;
           break;
         }
       }

@@ -210,6 +210,7 @@ struct SimulationConfig {
   enum class Topology {
     DIRECT,
     GOSSIP,
+    GRID,
   };
 
   const Args::Enum<Backend> enum_backend_{{
@@ -220,6 +221,7 @@ struct SimulationConfig {
   const Args::Enum<Topology> enum_topology_{{
       {Topology::DIRECT, "direct"},
       {Topology::GOSSIP, "gossip"},
+      {Topology::GRID, "grid"},
   }};
 
   Backend backend = Backend::DELAY;

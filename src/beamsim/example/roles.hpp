@@ -7,9 +7,12 @@
 namespace beamsim::example {
   using GroupIndex = uint32_t;
 
+  using IndexOfPeerMap = std::unordered_map<PeerIndex, PeerIndex>;
+
   struct Roles {
     struct Group {
       std::vector<PeerIndex> validators;
+      IndexOfPeerMap index_of_validators;
       PeerIndex local_aggregator;
     };
     PeerIndex validator_count;
@@ -17,6 +20,7 @@ namespace beamsim::example {
     std::vector<PeerIndex> validators;
     std::vector<GroupIndex> group_of_validator;
     std::vector<PeerIndex> aggregators;
+    IndexOfPeerMap index_of_aggregators;
     PeerIndex global_aggregator;
 
     /**
@@ -38,13 +42,17 @@ namespace beamsim::example {
       }
       for (PeerIndex peer_index = 0; peer_index < group_count + 1;
            ++peer_index) {
+        roles.index_of_aggregators.emplace(peer_index,
+                                           roles.aggregators.size());
         roles.aggregators.emplace_back(peer_index);
       }
       for (PeerIndex peer_index = 0; peer_index < validator_count;
            ++peer_index) {
         roles.validators.emplace_back(peer_index);
         GroupIndex group_index = peer_index % group_count;
-        roles.groups.at(group_index).validators.emplace_back(peer_index);
+        auto &group = roles.groups.at(group_index);
+        group.index_of_validators.emplace(peer_index, group.validators.size());
+        group.validators.emplace_back(peer_index);
         roles.group_of_validator.at(peer_index) = group_index;
       }
       return roles;
