@@ -2,7 +2,207 @@
 
 #include <beamsim/example/roles.hpp>
 #include <beamsim/ns3/mpi.hpp>
+#include <charconv>
 #include <print>
+
+struct Args {
+  Args(int argc, char **argv)
+      : args_{argv + 1, static_cast<size_t>(argc - 1)} {}
+
+  using Flags = std::vector<std::string>;
+  template <typename T>
+  struct Flag {
+    void help1(std::string &line) const {
+      auto sep = false;
+      for (auto &flag : flags_) {
+        if (sep) {
+          line += ", ";
+        } else {
+          sep = true;
+        }
+        line += flag;
+      }
+    }
+
+    void help2(std::string &line) const {
+      line += help_;
+    }
+
+    Flags flags_;
+    T &value_;
+    std::string help_;
+  };
+
+  template <typename T>
+  struct Enum {
+    Enum(std::map<T, std::string> map) : map_{map} {}
+
+    std::optional<T> parse(std::string_view s) const {
+      for (auto &p : map_) {
+        if (p.second == s) {
+          return p.first;
+        }
+      }
+      return std::nullopt;
+    }
+
+    std::string str(T v) const {
+      return map_.at(v);
+    }
+
+    void join(std::string &out, std::string sep) const {
+      auto first = true;
+      for (auto &p : map_) {
+        if (first) {
+          first = false;
+        } else {
+          out += sep;
+        }
+        out += p.second;
+      }
+    }
+
+    std::map<T, std::string> map_;
+  };
+
+  template <typename T>
+  struct FlagEnum : Flag<T> {
+    FlagEnum(Flags flags, T &value, std::string help, const Enum<T> &enum_)
+        : Flag<T>{flags, value, help}, enum_{enum_} {}
+
+    void help1(std::string &line) const {
+      Flag<T>::help1(line);
+      line += " <";
+      enum_.join(line, "|");
+      line += ">";
+    }
+    void help2(std::string &line) const {
+      Flag<T>::help2(line);
+      line += std::format(" (default: {})", enum_.str(Flag<T>::value_));
+    }
+    bool parse(std::string flag2, Args &args) const {
+      auto arg = args.next();
+      if (not arg) {
+        return false;
+      }
+      auto r = enum_.parse(arg.value());
+      if (not r) {
+        std::string s;
+        enum_.join(s, ", ");
+        std::println("Error: {} expects one of: {}", flag2, s);
+        return false;
+      }
+      Flag<T>::value_ = r.value();
+      return true;
+    }
+
+    const Enum<T> &enum_;
+  };
+
+  template <std::integral T>
+  struct FlagInt : Flag<T> {
+    void help1(std::string &line) const {
+      Flag<T>::help1(line);
+      line += " <number>";
+    }
+    void help2(std::string &line) const {
+      Flag<T>::help2(line);
+      line += std::format(" (default: {})", Flag<T>::value_);
+    }
+    bool parse(std::string flag2, Args &args) const {
+      auto arg = args.next();
+      if (not arg) {
+        return false;
+      }
+      auto end = arg->data() + arg->size();
+      auto r = std::from_chars(arg->data(), end, Flag<T>::value_);
+      if (r.ec != std::errc{} or r.ptr != end) {
+        std::println("Error: {} expects {}number",
+                     flag2,
+                     std::is_unsigned_v<T> ? "positive " : "");
+        return false;
+      }
+      return true;
+    }
+  };
+
+  struct FlagBool : Flag<bool> {
+    bool parse(std::string, Args &) const {
+      value_ = true;
+      return true;
+    }
+  };
+
+  template <typename... A>
+  static void help(const A &...a) {
+    std::vector<std::string> lines;
+    lines.resize(sizeof...(a));
+    size_t align = 0;
+    auto help1 = [&, i = 0](const auto &flag) mutable {
+      auto &line = lines.at(i);
+      line += "  ";
+      flag.help1(line);
+      beamsim::setMax(align, line.size());
+      ++i;
+    };
+    (help1(a), ...);
+    for (auto &line : lines) {
+      line.resize(align, ' ');
+    }
+    auto help2 = [&, i = 0](const auto &flag) mutable {
+      auto &line = lines.at(i);
+      line += "  ";
+      flag.help2(line);
+      ++i;
+    };
+    (help2(a), ...);
+    for (auto &line : lines) {
+      std::println("{}", line);
+    }
+    /*
+    "  -b, --backend <delay|queue|ns3>   Simulation backend (default: delay)"
+    "  -t, --topology <direct|gossip>    Communication topology (default: direct)"
+    "  -g, --groups <number>             Number of validator groups (default: 4)"
+    "  -gv, --group-validators <number>  Validators per group (default: 3)"
+    */
+  }
+
+  template <typename... A>
+  bool parse(const A &...a) {
+    std::map<std::string, std::function<bool(std::string)>> flags;
+    auto add = [&, this](const auto &flag) {
+      auto parse = [&, this](std::string flag2) {
+        return flag.parse(flag2, *this);
+      };
+      for (auto &flag2 : flag.flags_) {
+        flags.emplace(flag2, parse);
+      }
+    };
+    (add(a), ...);
+    while (auto flag2 = next()) {
+      auto it = flags.find(flag2.value());
+      if (it == flags.end()) {
+        std::println("Error: Unknown argument '{}'", flag2.value());
+        return false;
+      }
+      if (not it->second(flag2.value())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  std::optional<std::string> next() {
+    if (args_.empty()) {
+      return std::nullopt;
+    }
+    auto r = args_[0];
+    args_ = args_.subspan(1);
+    return r;
+  }
+
+  std::span<char *> args_;
+};
 
 // CLI Configuration
 struct SimulationConfig {
@@ -12,100 +212,62 @@ struct SimulationConfig {
     GOSSIP,
   };
 
-  Backend backend = Backend::DELAY;
-  Topology topology = Topology::DIRECT;
-  beamsim::example::GroupIndex group_count = 4;
-  beamsim::PeerIndex validators_per_group = 3;
-  bool help = false;
+  const Args::Enum<Backend> enum_backend_{{
+      {Backend::DELAY, "delay"},
+      {Backend::QUEUE, "queue"},
+      {Backend::NS3, "ns3"},
+  }};
+  const Args::Enum<Topology> enum_topology_{{
+      {Topology::DIRECT, "direct"},
+      {Topology::GOSSIP, "gossip"},
+  }};
 
-  void print_usage(const char *program_name) {
-    // clang-format off
+  Backend backend = Backend::DELAY;
+  Args::FlagEnum<decltype(backend)> flag_backend{
+      {"-b", "--backend"},
+      backend,
+      "Simulation backend",
+      enum_backend_,
+  };
+  Topology topology = Topology::DIRECT;
+  Args::FlagEnum<decltype(topology)> flag_topology{
+      {"-t", "--topology"},
+      topology,
+      "Communication topology",
+      enum_topology_,
+  };
+  beamsim::example::GroupIndex group_count = 4;
+  Args::FlagInt<decltype(group_count)> flag_group_count{{
+      {"-g", "--groups"},
+      group_count,
+      "Number of validator groups",
+  }};
+  beamsim::PeerIndex validators_per_group = 3;
+  Args::FlagInt<decltype(validators_per_group)> flag_validators_per_group{{
+      {"-gv", "--group-validators"},
+      validators_per_group,
+      "Validators per group",
+  }};
+  bool help = false;
+  Args::FlagBool flag_help{{{"-h", "--help"}, help, "Show this help message"}};
+
+  static void print_usage(const char *program_name) {
+    SimulationConfig config;
     std::println("Usage: {} [options]", program_name);
     std::println("Options:");
-    std::println("  -b, --backend <delay|queue|ns3>   Simulation backend (default: delay)");
-    std::println("  -t, --topology <direct|gossip>    Communication topology (default: direct)");
-    std::println("  -g, --groups <number>             Number of validator groups (default: 4)");
-    std::println("  -gv, --group-validators <number>  Validators per group (default: 3)");
-    std::println("  -h, --help                        Show this help message");
-    // clang-format on
+    Args::help(config.flag_backend,
+               config.flag_topology,
+               config.flag_group_count,
+               config.flag_validators_per_group,
+               config.flag_help);
   }
 
   bool parse_args(int argc, char **argv) {
-    for (int i = 1; i < argc; ++i) {
-      std::string arg = argv[i];
-
-      if (arg == "-h" or arg == "--help") {
-        help = true;
-        return true;
-      } else if (arg == "-b" or arg == "--backend") {
-        if (i + 1 >= argc) {
-          std::println("Error: --backend requires an argument");
-          return false;
-        }
-        std::string backend_str = argv[++i];
-        if (backend_str == "delay") {
-          backend = Backend::DELAY;
-        } else if (backend_str == "queue") {
-          backend = Backend::QUEUE;
-        } else if (backend_str == "ns3") {
-          backend = Backend::NS3;
-        } else {
-          std::println("Error: Invalid backend '{}'. Use: delay, queue, ns3",
-                       backend_str);
-          return false;
-        }
-      } else if (arg == "-t" or arg == "--topology") {
-        if (i + 1 >= argc) {
-          std::println("Error: --topology requires an argument");
-          return false;
-        }
-        std::string topology_str = argv[++i];
-        if (topology_str == "direct") {
-          topology = Topology::DIRECT;
-        } else if (topology_str == "gossip") {
-          topology = Topology::GOSSIP;
-        } else {
-          std::println("Error: Invalid topology '{}'. Use: direct, gossip",
-                       topology_str);
-          return false;
-        }
-      } else if (arg == "-g" or arg == "--groups") {
-        if (i + 1 >= argc) {
-          std::println("Error: --groups requires an argument");
-          return false;
-        }
-        try {
-          group_count = std::stoi(argv[++i]);
-          if (group_count <= 0) {
-            std::println("Error: Number of groups must be positive");
-            return false;
-          }
-        } catch (const std::exception &) {
-          std::println("Error: Invalid number for groups: {}", argv[i]);
-          return false;
-        }
-      } else if (arg == "-gv" or arg == "--group-validators") {
-        if (i + 1 >= argc) {
-          std::println("Error: --group-validators requires an argument");
-          return false;
-        }
-        try {
-          validators_per_group = std::stoi(argv[++i]);
-          if (validators_per_group <= 0) {
-            std::println(
-                "Error: Number of validators per group must be positive");
-            return false;
-          }
-        } catch (const std::exception &) {
-          std::println("Error: Invalid number for validators: {}", argv[i]);
-          return false;
-        }
-      } else {
-        std::println("Error: Unknown argument '{}'", arg);
-        return false;
-      }
-    }
-    return true;
+    return Args{argc, argv}.parse(flag_backend,
+                                  flag_topology,
+                                  flag_group_count,
+                                  flag_validators_per_group,
+                                  flag_help);
   }
 
   void validate() {
@@ -125,16 +287,9 @@ struct SimulationConfig {
     if (not beamsim::mpiIsMain()) {
       return;
     }
-
-    std::string backend_str = (backend == Backend::DELAY) ? "delay"
-                            : (backend == Backend::QUEUE) ? "queue"
-                                                          : "ns3";
-    std::string topology_str =
-        (topology == Topology::DIRECT) ? "direct" : "gossip";
-
     std::println("Configuration:");
-    std::println("  Backend: {}", backend_str);
-    std::println("  Topology: {}", topology_str);
+    std::println("  Backend: {}", enum_backend_.str(backend));
+    std::println("  Topology: {}", enum_topology_.str(topology));
     std::println("  Groups: {}", group_count);
     std::println("  Validators per group: {}", validators_per_group);
     std::println("  Total validators: {}",
