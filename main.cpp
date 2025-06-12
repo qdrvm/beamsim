@@ -224,6 +224,11 @@ void run_simulation(const SimulationConfig &config) {
 
     switch (config.topology) {
       case SimulationConfig::Topology::DIRECT: {
+        simulator.template addPeers<beamsim::example::PeerDirect>(
+            roles.validator_count, shared_state);
+        break;
+      }
+      case SimulationConfig::Topology::GOSSIP: {
         simulator.template addPeers<beamsim::example::PeerGossip>(
             roles.validator_count, shared_state);
 
@@ -249,11 +254,6 @@ void run_simulation(const SimulationConfig &config) {
         }
         subscribe(beamsim::example::topic_snark1, roles.aggregators);
         subscribe(beamsim::example::topic_snark2, roles.validators);
-        break;
-      }
-      case SimulationConfig::Topology::GOSSIP: {
-        simulator.template addPeers<beamsim::example::PeerDirect>(
-            roles.validator_count, shared_state);
         break;
       }
     }
