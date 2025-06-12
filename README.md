@@ -70,7 +70,7 @@ The NS-3 setup script will:
 | `-b, --backend <type>` | Simulation backend: `delay`, `queue`, `ns3` | `delay` |
 | `-t, --topology <type>` | Communication topology: `direct`, `gossip` | `direct` |
 | `-g, --groups <number>` | Number of validator groups | `4` |
-| `-v, --validators <number>` | Number of validators per group | `3` |
+| `-gv, --group-validators <number>` | Number of validators per group | `3` |
 | `-h, --help` | Show help message | - |
 
 ### Examples
@@ -112,20 +112,20 @@ The NS-3 setup script will:
 
 ```bash
 # Small network: 2 groups of 5 validators each (10 total)
-./build/main --groups 2 --validators 5
+./build/main --groups 2 --group-validators 5
 
 # Large network: 20 groups of 50 validators each (1000 total)
-./build/main --groups 20 --validators 50
+./build/main --groups 20 --group-validators 50
 ```
 
 #### Combined Configuration
 
 ```bash
 # Realistic simulation with gossip protocol
-./build/main --backend ns3 --topology gossip --groups 10 --validators 10
+./build/main --backend ns3 --topology gossip --groups 10 --group-validators 10
 
 # Performance testing with queue backend
-./build/main --backend queue --topology direct --groups 5 --validators 20
+./build/main --backend queue --topology direct --groups 5 --group-validators 20
 ```
 
 ## Simulation Backends
@@ -237,7 +237,7 @@ After building, verify the installation works correctly:
 ./build/main --help
 
 # Run a quick simulation
-./build/main --groups 2 --validators 3
+./build/main --groups 2 --group-validators 3
 
 # Test different backends (if available)
 ./build/main --backend delay
