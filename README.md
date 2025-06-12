@@ -31,13 +31,9 @@ BeamSim simulates validator networks with configurable group structures, support
 ### Quick Build (without NS-3)
 
 ```bash
-# Create build directory
-mkdir -p build
-cd build
-
 # Configure and build
-cmake ..
-make -j$(nproc)
+cmake -G Ninja -B build -D CMAKE_BUILD_TYPE=RelWithDebInfo
+ninja -C build
 ```
 
 ### Building with NS-3 Support
@@ -50,10 +46,8 @@ make -j$(nproc)
 
 2. **Build the project**:
    ```bash
-   mkdir -p build
-   cd build
-   cmake ..
-   make -j$(nproc)
+   cmake -G Ninja -B build -D CMAKE_BUILD_TYPE=RelWithDebInfo -D ns3_DIR=external/ns-allinone-3.44/install/lib/cmake/ns3
+   ninja -C build
    ```
 
 The NS-3 setup script will:
