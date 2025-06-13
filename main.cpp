@@ -18,6 +18,40 @@
 // TODO: const -> config
 
 namespace beamsim::example {
+  std::string report_lines;
+  template <typename... A>
+  void report(const ISimulator &simulator, const A &...a) {
+    std::string line;
+    line += "[";
+    auto arg = [&, first = true](const auto &a) mutable {
+      if (first) {
+        first = false;
+      } else {
+        line += ",";
+      }
+      using T = std::remove_cvref_t<decltype(a)>;
+      if constexpr (std::integral<T>) {
+        line += std::to_string(a);
+      } else {
+        std::string_view s = a;
+        line += "\"";
+        line += s;
+        line += "\"";
+      }
+    };
+    arg("report");
+    arg(ms(simulator.time()));
+    (arg(a), ...);
+    line += "]";
+    line += "\n";
+    report_lines += line;
+  }
+  void report_flush() {
+    std::print("{}", report_lines);
+  }
+}  // namespace beamsim::example
+
+namespace beamsim::example {
   constexpr auto kTimeSignature = std::chrono::milliseconds{20};
   constexpr auto kTimeSnark = std::chrono::milliseconds{200};
 
@@ -27,6 +61,10 @@ namespace beamsim::example {
     const Roles &roles;
     PeerIndex snark2_received = 0;
     bool done = false;
+
+    PeerIndex snark2_threshold() const {
+      return roles.validator_count * 2 / 3 + 1;
+    }
   };
 
   class PeerBase : public IPeer {
@@ -67,25 +105,30 @@ namespace beamsim::example {
       }
       auto snark1 = std::move(aggregating_snark1.value());
       aggregating_snark1.reset();
-      simulator_.runAfter(kTimeSnark,
-                          [this, snark1{std::move(snark1)}]() mutable {
-                            onMessageSnark1(snark1);
-                            sendSnark1(std::move(snark1));
-                          });
+      simulator_.runAfter(
+          kTimeSnark, [this, snark1{std::move(snark1)}]() mutable {
+            report(simulator_, "snark1_sent", snark1.peer_indices.ones());
+            onMessageSnark1(snark1);
+            sendSnark1(std::move(snark1));
+          });
     }
     void onMessageSnark1(const MessageSnark1 &message) {
       if (not aggregating_snark2.has_value()) {
         return;
       }
       aggregating_snark2->peer_indices.set(message.peer_indices);
-      PeerIndex threshold = shared_state_.roles.validator_count;
-      if (aggregating_snark2->peer_indices.ones() < threshold) {
+      report(simulator_,
+             "snark1_received",
+             aggregating_snark2->peer_indices.ones());
+      if (aggregating_snark2->peer_indices.ones()
+          < shared_state_.snark2_threshold()) {
         return;
       }
       auto snark2 = std::move(aggregating_snark2.value());
       aggregating_snark2.reset();
       simulator_.runAfter(kTimeSnark,
                           [this, snark2{std::move(snark2)}]() mutable {
+                            report(simulator_, "snark2_sent");
                             if (kStopOnCreateSnark2) {
                               shared_state_.done = true;
                               simulator_.stop();
@@ -297,6 +340,11 @@ void run_simulation(const SimulationConfig &config) {
     beamsim::Stopwatch t_run;
     beamsim::example::SharedState shared_state{roles};
 
+    beamsim::example::report(simulator,
+                             "info",
+                             roles.validator_count,
+                             shared_state.snark2_threshold());
+
     switch (config.topology) {
       case SimulationConfig::Topology::DIRECT: {
         simulator.template addPeers<beamsim::example::PeerDirect>(
@@ -347,6 +395,7 @@ void run_simulation(const SimulationConfig &config) {
                    beamsim::ms(t_run.time()),
                    done ? "SUCCESS" : "FAILURE");
     }
+    beamsim::example::report_flush();
   };
 
   // Run simulation based on backend
