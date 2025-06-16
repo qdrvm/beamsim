@@ -96,10 +96,6 @@ namespace beamsim::ns3_ {
   };
 
   struct RouterInfo {
-    struct Edge {
-      PeerIndex router;
-      InterfaceIndex interface;
-    };
     ns3::Ipv4Address ip;
     std::unordered_map<PeerIndex, InterfaceIndex> reverse_edges;
   };
