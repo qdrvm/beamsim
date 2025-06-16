@@ -32,6 +32,10 @@ namespace beamsim {
       return xs[random<size_t>(0, xs.size() - 1)];
     }
 
+    void shuffle(auto &&r) {
+      std::ranges::shuffle(std::forward<decltype(r)>(r), engine_);
+    }
+
    private:
     std::default_random_engine engine_;
   };

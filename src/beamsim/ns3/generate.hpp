@@ -7,7 +7,8 @@
 namespace beamsim::ns3_ {
   inline void generate(Random &random,
                        Routing &routing,
-                       const example::Roles &roles) {
+                       const example::Roles &roles,
+                       bool shuffle) {
     auto bitrate = [&](uint64_t min_mbps, uint64_t max_mpbs) {
       constexpr uint64_t mbps = 1000000;
       return [&, min{min_mbps * mbps}, max{max_mpbs * mbps}] {
@@ -75,9 +76,16 @@ namespace beamsim::ns3_ {
                          });
     }
 
+    std::vector<PeerIndex> shuffled;
+    for (PeerIndex i = 0; i < roles.validator_count; ++i) {
+      shuffled.emplace_back(roles.group_of_validator.at(i));
+    }
+    if (shuffle) {
+      random.shuffle(shuffled);
+    }
     std::vector<PeerIndex> peers;
     for (PeerIndex i = 0; i < roles.validator_count; ++i) {
-      auto subnet_index = roles.group_of_validator.at(i);
+      auto subnet_index = shuffled.at(i);
       peers.emplace_back(routing.addPeerNode(mpi_subnet(subnet_index)));
       routing.wirePeer(peers.at(i),
                        subnet.at(subnet_index),

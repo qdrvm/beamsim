@@ -30,16 +30,27 @@ run_cache = dict()
 run_exe_time = None
 
 
-def run(b="ns3", t="direct", g=10, gv=10):
+def run(b="ns3", t="direct", g=10, gv=10, shuffle=False):
     global run_exe_time
     exe_time = os.stat(exe).st_mtime
     if run_exe_time != exe_time:
         run_exe_time = exe_time
         run_cache.clear()
-    key = (b, t, g, gv)
+    key = (b, t, g, gv, shuffle)
     output = run_cache.get(key, None)
     if output is None:
-        cmd = [exe, "-b", b, "-t", t, "-g", str(g), "-gv", str(gv)]
+        cmd = [
+            exe,
+            "-b",
+            b,
+            "-t",
+            t,
+            "-g",
+            str(g),
+            "-gv",
+            str(gv),
+            *(["--shuffle"] if shuffle else []),
+        ]
         print(f"run: {' '.join(cmd)}")
         output = subprocess.check_output(cmd, text=True)
         run_cache[key] = output

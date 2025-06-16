@@ -250,6 +250,8 @@ struct SimulationConfig {
       validators_per_group,
       "Validators per group",
   }};
+  bool shuffle = false;
+  Args::FlagBool flag_shuffle{{{"--shuffle"}, shuffle, ""}};
   bool help = false;
   Args::FlagBool flag_help{{{"-h", "--help"}, help, "Show this help message"}};
 
@@ -261,6 +263,7 @@ struct SimulationConfig {
                config.flag_topology,
                config.flag_group_count,
                config.flag_validators_per_group,
+               config.flag_shuffle,
                config.flag_help);
   }
 
@@ -269,6 +272,7 @@ struct SimulationConfig {
                                   flag_topology,
                                   flag_group_count,
                                   flag_validators_per_group,
+                                  flag_shuffle,
                                   flag_help);
   }
 

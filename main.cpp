@@ -429,7 +429,8 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::NS3: {
 #ifdef ns3_FOUND
       beamsim::ns3_::Simulator simulator;
-      beamsim::ns3_::generate(random, simulator.routing_, roles);
+      beamsim::ns3_::generate(
+          random, simulator.routing_, roles, config.shuffle);
       switch (config.topology) {
         case SimulationConfig::Topology::DIRECT: {
           simulator.message_decode_ = beamsim::example::Message::decode;
