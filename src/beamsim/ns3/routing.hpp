@@ -5,20 +5,14 @@
 #include <ns3/ipv4-static-routing-helper.h>
 #include <ns3/point-to-point-helper.h>
 
-#include <beamsim/assert.hpp>
 #include <beamsim/ns3/mpi.hpp>
-#include <beamsim/peer_index.hpp>
+#include <beamsim/routers.hpp>
 #include <beamsim/time.hpp>
 #include <unordered_set>
 
 namespace beamsim::ns3_ {
   using InterfaceIndex = uint32_t;
   using NetworkIndex = uint32_t;
-
-  struct WireProps {
-    uint64_t bitrate;
-    uint32_t delay_ms;
-  };
 
   inline size_t countRoutingTableRules(
       ns3::Ptr<ns3::Ipv4RoutingProtocol> routing) {
@@ -105,7 +99,7 @@ namespace beamsim::ns3_ {
                ns3::Ptr<ns3::Node> node2,
                const WireProps &wire) {
       ns3::PointToPointHelper helper;
-      helper.SetDeviceAttribute("DataRate", ns3::DataRateValue{wire.bitrate});
+      helper.SetDeviceAttribute("DataRate", ns3::DataRateValue{wire.bitrate()});
       helper.SetChannelAttribute(
           "Delay", ns3::TimeValue{ns3::MilliSeconds(wire.delay_ms)});
       return helper.Install(node1, node2);
@@ -184,6 +178,34 @@ namespace beamsim::ns3_ {
         info2.reverse_edges.emplace(router1, endpoint1.interface);
       } else {
         _wireGlobal(node1, node2, wire);
+      }
+    }
+
+    void initRouters(const Routers &routers) {
+      std::unordered_map<PeerIndex, MpiIndex> mpi_subnets;
+      for (auto &wire : routers.peer_wire_) {
+        auto it = mpi_subnets.find(wire.router_index);
+        if (it == mpi_subnets.end()) {
+          mpi_subnets.emplace(wire.router_index,
+                              (1 + mpi_subnets.size()) % mpiSize());
+        }
+      }
+      for (PeerIndex i = 0; i < routers.router_wires_.size(); ++i) {
+        auto it = mpi_subnets.find(i);
+        assert2(addRouter(it == mpi_subnets.end() ? 0 : it->second) == i);
+      }
+      for (PeerIndex i1 = 0; i1 < routers.router_wires_.size(); ++i1) {
+        for (auto [i2, wire] : routers.router_wires_.at(i1)) {
+          if (i2 < i1) {
+            continue;
+          }
+          wireRouter(i1, i2, wire);
+        }
+      }
+      for (PeerIndex i1 = 0; i1 < routers.peer_wire_.size(); ++i1) {
+        auto &[i2, wire] = routers.peer_wire_.at(i1);
+        assert2(addPeerNode(mpi_subnets.at(i2)) == i1);
+        wirePeer(i1, i2, wire);
       }
     }
 

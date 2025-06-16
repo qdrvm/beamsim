@@ -2,6 +2,7 @@
 
 #include <beamsim/assert.hpp>
 #include <beamsim/peer_index.hpp>
+#include <unordered_map>
 #include <vector>
 
 namespace beamsim::example {

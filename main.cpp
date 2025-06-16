@@ -9,7 +9,6 @@
 #include <print>
 
 #ifdef ns3_FOUND
-#include <beamsim/ns3/generate.hpp>
 #include <beamsim/ns3/simulator.hpp>
 #endif
 
@@ -339,11 +338,12 @@ namespace beamsim::example {
 }  // namespace beamsim::example
 
 void run_simulation(const SimulationConfig &config) {
+  beamsim::Random random;
   auto roles = beamsim::example::Roles::make(
       config.group_count * config.validators_per_group + 1, config.group_count);
+  auto routers = beamsim::Routers::make(random, roles, config.shuffle);
   beamsim::gossip::Config gossip_config{3, 1};
 
-  beamsim::Random random;
   auto run = [&](auto &simulator) {
     beamsim::Stopwatch t_run;
     beamsim::example::SharedState shared_state{roles};
@@ -430,8 +430,7 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::NS3: {
 #ifdef ns3_FOUND
       beamsim::ns3_::Simulator simulator;
-      beamsim::ns3_::generate(
-          random, simulator.routing_, roles, config.shuffle);
+      simulator.routing_.initRouters(routers);
       switch (config.topology) {
         case SimulationConfig::Topology::DIRECT: {
           simulator.message_decode_ = beamsim::example::Message::decode;
