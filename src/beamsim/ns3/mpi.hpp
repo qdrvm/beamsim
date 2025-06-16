@@ -42,4 +42,12 @@ namespace beamsim {
 #endif
     return r;
   }
+
+  inline int64_t mpiMin(int64_t x) {
+    int64_t r = x;
+#ifdef ns3_FOUND
+    MPI_Allreduce(&x, &r, 1, MPI_INT64_T, MPI_MIN, MPI_COMM_WORLD);
+#endif
+    return r;
+  }
 }  // namespace beamsim

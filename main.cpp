@@ -396,10 +396,11 @@ void run_simulation(const SimulationConfig &config) {
 
     simulator.run(std::chrono::minutes{1});
     auto done = beamsim::mpiAny(shared_state.done);
+    beamsim::Time simulator_time{beamsim::mpiMin(simulator.time().count())};
 
     if (beamsim::mpiIsMain()) {
       std::println("Time: {}ms, Real: {}ms, Status: {}",
-                   beamsim::ms(simulator.time()),
+                   beamsim::ms(simulator_time),
                    beamsim::ms(t_run.time()),
                    done ? "SUCCESS" : "FAILURE");
     }
