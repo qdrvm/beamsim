@@ -220,9 +220,17 @@ namespace beamsim::example {
 
   class PeerGossip : public PeerBase {
    public:
-    using PeerBase::PeerBase;
+    PeerGossip(ISimulator &simulator,
+               PeerIndex index,
+               SharedState &shared_state,
+               Random &random)
+        : PeerBase{simulator, index, shared_state}, gossip_{*this, random} {}
 
     // IPeer
+    void onStart() override {
+      PeerBase::onStart();
+      gossip_.start();
+    }
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
       gossip_.onMessage(
           from_peer, any_message, [&](const MessagePtr &any_message) {
@@ -253,7 +261,7 @@ namespace beamsim::example {
       gossip_.gossip(topic_snark2, std::make_shared<Message>(message));
     }
 
-    gossip::Peer gossip_{*this};
+    gossip::Peer gossip_;
   };
 
   class PeerGrid : public PeerBase {
@@ -353,7 +361,7 @@ void run_simulation(const SimulationConfig &config) {
       }
       case SimulationConfig::Topology::GOSSIP: {
         simulator.template addPeers<beamsim::example::PeerGossip>(
-            roles.validator_count, shared_state);
+            roles.validator_count, shared_state, random);
 
         auto subscribe = [&](beamsim::gossip::TopicIndex topic_index,
                              const std::vector<beamsim::PeerIndex> &peers) {
