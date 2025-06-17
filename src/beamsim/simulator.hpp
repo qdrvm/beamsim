@@ -42,6 +42,7 @@ namespace beamsim {
                   MessagePtr any_message) override {
       peers_.at(to_peer)->onMessage(from_peer, std::move(any_message));
     }
+    void connect(PeerIndex, PeerIndex) override {}
 
     void run(Time timeout) {
       while (not stop_ and not timers_.empty()) {

@@ -36,6 +36,7 @@ namespace beamsim {
     virtual void _receive(PeerIndex from_peer,
                           PeerIndex to_peer,
                           MessagePtr any_message) = 0;
+    virtual void connect(PeerIndex peer1, PeerIndex peer2) = 0;
   };
 
   class IPeer {

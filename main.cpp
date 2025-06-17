@@ -163,7 +163,19 @@ namespace beamsim::example {
   };
 
   class PeerDirect : public PeerBase {
+   public:
     using PeerBase::PeerBase;
+
+    static void connect(ISimulator &simulator, const Roles &roles) {
+      for (PeerIndex i = 0; i < roles.validator_count; ++i) {
+        auto &group = roles.groups.at(roles.group_of_validator.at(i));
+        if (i == group.local_aggregator) {
+          simulator.connect(i, roles.global_aggregator);
+        } else {
+          simulator.connect(i, group.local_aggregator);
+        }
+      }
+    }
 
     // IPeer
     void onMessage(PeerIndex, MessagePtr any_message) override {
@@ -267,6 +279,24 @@ namespace beamsim::example {
    public:
     using PeerBase::PeerBase;
 
+    static void connect(ISimulator &simulator, const Roles &roles) {
+      for (PeerIndex i1 = 0; i1 < roles.validator_count; ++i1) {
+        auto &group = roles.groups.at(roles.group_of_validator.at(i1));
+        auto connect = [&](const std::vector<PeerIndex> &peers,
+                           auto &index_of) {
+          auto peer = index_of.at(i1);
+          grid::Grid(peers.size()).publishTo(peer, [&](PeerIndex i2) {
+            simulator.connect(i1, peers.at(i2));
+          });
+        };
+        connect(group.validators, group.index_of_validators);
+        if (i1 == group.local_aggregator or i1 == roles.global_aggregator) {
+          connect(roles.aggregators, roles.index_of_aggregators);
+        }
+        connect(roles.validators, roles.validators);
+      }
+    }
+
     // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
       auto &grid_message = dynamic_cast<grid::Message &>(*any_message);
@@ -358,6 +388,7 @@ void run_simulation(const SimulationConfig &config) {
       case SimulationConfig::Topology::DIRECT: {
         simulator.template addPeers<beamsim::example::PeerDirect>(
             roles.validator_count, shared_state);
+        beamsim::example::PeerDirect::connect(simulator, roles);
         break;
       }
       case SimulationConfig::Topology::GOSSIP: {
@@ -369,6 +400,9 @@ void run_simulation(const SimulationConfig &config) {
           auto views = beamsim::gossip::generate(random, gossip_config, peers);
           for (size_t i = 0; i < peers.size(); ++i) {
             auto &peer_index = peers.at(i);
+            for (auto &to_peer : views.at(i).peers) {
+              simulator.connect(peer_index, to_peer);
+            }
             if (not simulator.isLocalPeer(peer_index)) {
               continue;
             }
@@ -391,6 +425,7 @@ void run_simulation(const SimulationConfig &config) {
       case SimulationConfig::Topology::GRID: {
         simulator.template addPeers<beamsim::example::PeerGrid>(
             roles.validator_count, shared_state);
+        beamsim::example::PeerGrid::connect(simulator, roles);
         break;
       }
     }

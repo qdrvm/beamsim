@@ -223,6 +223,7 @@ namespace beamsim::ns3_ {
     }
 
     void connect(PeerIndex peer1, PeerIndex peer2) {
+      assert2(peer1 != peer2);
       if (direct_ == nullptr) {
         return;
       }

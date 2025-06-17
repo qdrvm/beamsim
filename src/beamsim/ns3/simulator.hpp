@@ -290,6 +290,9 @@ namespace beamsim::ns3_ {
     void _receive(PeerIndex, PeerIndex, MessagePtr) override {
       abort();
     }
+    void connect(PeerIndex peer1, PeerIndex peer2) override {
+      routing_.connect(peer1, peer2);
+    }
 
     template <typename Peer, typename... A>
     void addPeer(A &&...a) {
@@ -409,7 +412,6 @@ namespace beamsim::ns3_ {
     if (sockets.write()) {
       return;
     }
-    simulator_.routing_.connect(peer_->peer_index_, peer_index);
     auto socket = makeSocket();
     socket->Connect(ns3::InetSocketAddress{
         simulator_.routing_.peer_ips_.at(peer_index), kPort});
