@@ -427,10 +427,18 @@ void run_simulation(const SimulationConfig &config) {
       }
       break;
     }
-    case SimulationConfig::Backend::NS3: {
+    case SimulationConfig::Backend::NS3:
+    case SimulationConfig::Backend::NS3_DIRECT: {
 #ifdef ns3_FOUND
       beamsim::ns3_::Simulator simulator;
-      simulator.routing_.initRouters(routers);
+      if (config.backend == SimulationConfig::Backend::NS3) {
+        simulator.routing_.initRouters(routers);
+      } else {
+        routers.computeRoutes();
+        simulator.routing_.initDirect(routers, [&](beamsim::PeerIndex i) {
+          return roles.group_of_validator.at(i);
+        });
+      }
       switch (config.topology) {
         case SimulationConfig::Topology::DIRECT: {
           simulator.message_decode_ = beamsim::example::Message::decode;

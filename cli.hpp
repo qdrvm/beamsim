@@ -206,7 +206,12 @@ struct Args {
 
 // CLI Configuration
 struct SimulationConfig {
-  enum class Backend { DELAY, QUEUE, NS3 };
+  enum class Backend {
+    DELAY,
+    QUEUE,
+    NS3,
+    NS3_DIRECT,
+  };
   enum class Topology {
     DIRECT,
     GOSSIP,
@@ -217,6 +222,7 @@ struct SimulationConfig {
       {Backend::DELAY, "delay"},
       {Backend::QUEUE, "queue"},
       {Backend::NS3, "ns3"},
+      {Backend::NS3_DIRECT, "ns3-direct"},
   }};
   const Args::Enum<Topology> enum_topology_{{
       {Topology::DIRECT, "direct"},
@@ -278,7 +284,7 @@ struct SimulationConfig {
 
   void validate() {
 #ifndef ns3_FOUND
-    if (backend == Backend::NS3) {
+    if (backend == Backend::NS3 or backend == Backend::NS3_DIRECT) {
       if (beamsim::mpiIsMain()) {
         std::println(
             "Warning: ns3 backend requested but simulator is build without ns3 "

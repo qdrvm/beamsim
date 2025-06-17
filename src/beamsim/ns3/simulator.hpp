@@ -409,6 +409,7 @@ namespace beamsim::ns3_ {
     if (sockets.write()) {
       return;
     }
+    simulator_.routing_.connect(peer_->peer_index_, peer_index);
     auto socket = makeSocket();
     socket->Connect(ns3::InetSocketAddress{
         simulator_.routing_.peer_ips_.at(peer_index), kPort});

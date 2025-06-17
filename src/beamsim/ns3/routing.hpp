@@ -209,23 +209,54 @@ namespace beamsim::ns3_ {
       }
     }
 
-    void populateRoutingTables() {
-      if (static_routing_) {
-        populateStaticRoutingTables();
-      } else {
-        Stopwatch t_PopulateRoutingTables;
-        ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
-        if (mpiIsMain()) {
-          std::println(
-              "PopulateRoutingTables for {} peers and {} routers took {}ms",
-              peers_.GetN(),
-              routers_.GetN(),
-              ms(t_PopulateRoutingTables.time()));
-        }
+    void initDirect(const Routers &routers, const auto &mpi_group) {
+      for (PeerIndex i = 0; i < routers.peer_wire_.size(); ++i) {
+        assert2(addPeerNode(mpi_group(i) % beamsim::mpiSize()) == i);
+        auto ip = direct_ip_generator_.generate();
+        peer_ips_.emplace(i, ip);
+        ip_peer_index_.emplace(ip, i);
       }
-      if (mpiIsMain()) {
-        std::println("routing table rules: {}",
-                     ns3_::countRoutingTableRules(routers_));
+      direct_ = &routers;
+    }
+
+    void connect(PeerIndex peer1, PeerIndex peer2) {
+      if (direct_ == nullptr) {
+        return;
+      }
+      if (not direct_links_
+                  .emplace(std::min(peer1, peer2), std::max(peer1, peer2))
+                  .second) {
+        return;
+      }
+      auto [endpoint1, endpoint2] =
+          _wireStatic(peers_.Get(peer1),
+                      peer_ips_.at(peer1),
+                      peers_.Get(peer2),
+                      peer_ips_.at(peer2),
+                      direct_->directWire(peer1, peer2));
+      endpoint1.routing->AddHostRouteTo(endpoint2.ip, endpoint1.interface);
+      endpoint2.routing->AddHostRouteTo(endpoint1.ip, endpoint2.interface);
+    }
+
+    void populateRoutingTables() {
+      if (direct_ == nullptr) {
+        if (static_routing_) {
+          populateStaticRoutingTables();
+        } else {
+          Stopwatch t_PopulateRoutingTables;
+          ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
+          if (mpiIsMain()) {
+            std::println(
+                "PopulateRoutingTables for {} peers and {} routers took {}ms",
+                peers_.GetN(),
+                routers_.GetN(),
+                ms(t_PopulateRoutingTables.time()));
+          }
+        }
+        if (mpiIsMain()) {
+          std::println("routing table rules: {}",
+                       ns3_::countRoutingTableRules(routers_));
+        }
       }
     }
 
@@ -275,6 +306,9 @@ namespace beamsim::ns3_ {
     IpGenerator router_ip_generator_{0};
     std::unordered_map<PeerIndex, RouterInfo> router_info_;
     std::unordered_map<PeerIndex, PeerRouterIpSubnet> peer_router_ip_subnet_;
+    const Routers *direct_ = nullptr;
+    IpGenerator direct_ip_generator_{0};
+    std::unordered_set<std::pair<PeerIndex, PeerIndex>, PairHash> direct_links_;
     ns3::NodeContainer peers_;
     ns3::NodeContainer routers_;
     std::unordered_map<PeerIndex, ns3::Ipv4Address> peer_ips_;
