@@ -207,6 +207,9 @@ namespace beamsim::ns3_ {
         assert2(addPeerNode(mpi_subnets.at(i2)) == i1);
         wirePeer(i1, i2, wire);
       }
+      if (static_routing_) {
+        populateStaticRoutingTables(routers);
+      }
     }
 
     void initDirect(const Routers &routers, const auto &mpi_group) {
@@ -240,9 +243,7 @@ namespace beamsim::ns3_ {
 
     void populateRoutingTables() {
       if (direct_ == nullptr) {
-        if (static_routing_) {
-          populateStaticRoutingTables();
-        } else {
+        if (not static_routing_) {
           Stopwatch t_PopulateRoutingTables;
           ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
           if (mpiIsMain()) {
@@ -260,22 +261,17 @@ namespace beamsim::ns3_ {
       }
     }
 
-    void populateStaticRoutingTables() {
-      for (auto &[router_index, subnet] : peer_router_ip_subnet_) {
-        std::unordered_set<PeerIndex> visited{router_index};
-        std::deque<PeerIndex> queue{router_index};
-        while (not queue.empty()) {
-          auto router1 = queue.front();
-          queue.pop_front();
-          for (auto &[router2, interface] : routerInfo(router1).reverse_edges) {
-            if (not visited.emplace(router2).second) {
-              continue;
-            }
-            getStaticRouting(routers_.Get(router2))
-                ->AddNetworkRouteTo(
-                    subnet.ip_generator.network, kIpMask, interface);
-            queue.emplace_back(router2);
+    void populateStaticRoutingTables(const Routers &routers) {
+      for (auto &[i0, subnet] : peer_router_ip_subnet_) {
+        for (PeerIndex i1 = 0; i1 < routers_.GetN(); ++i1) {
+          if (i1 == i0) {
+            continue;
           }
+          auto i2 = routers.routes_.at(i1).at(i0).next;
+          auto interface = router_info_.at(i2).reverse_edges.at(i1);
+          getStaticRouting(routers_.Get(i1))
+              ->AddNetworkRouteTo(
+                  subnet.ip_generator.network, kIpMask, interface);
         }
       }
     }

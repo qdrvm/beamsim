@@ -342,6 +342,7 @@ void run_simulation(const SimulationConfig &config) {
   auto roles = beamsim::example::Roles::make(
       config.group_count * config.validators_per_group + 1, config.group_count);
   auto routers = beamsim::Routers::make(random, roles, config.shuffle);
+  routers.computeRoutes();
   beamsim::gossip::Config gossip_config{3, 1};
 
   auto run = [&](auto &simulator) {
@@ -411,7 +412,6 @@ void run_simulation(const SimulationConfig &config) {
   switch (config.backend) {
     case SimulationConfig::Backend::DELAY: {
       if (beamsim::mpiIsMain()) {
-        routers.computeRoutes();
         beamsim::DelayNetwork delay_network{routers};
         beamsim::Simulator simulator{delay_network};
         run(simulator);
@@ -420,7 +420,6 @@ void run_simulation(const SimulationConfig &config) {
     }
     case SimulationConfig::Backend::QUEUE: {
       if (beamsim::mpiIsMain()) {
-        routers.computeRoutes();
         beamsim::QueueNetwork queue_network{routers};
         beamsim::Simulator simulator{queue_network};
         run(simulator);
@@ -434,7 +433,6 @@ void run_simulation(const SimulationConfig &config) {
       if (config.backend == SimulationConfig::Backend::NS3) {
         simulator.routing_.initRouters(routers);
       } else {
-        routers.computeRoutes();
         simulator.routing_.initDirect(routers, [&](beamsim::PeerIndex i) {
           return roles.group_of_validator.at(i);
         });
