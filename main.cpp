@@ -411,8 +411,8 @@ void run_simulation(const SimulationConfig &config) {
   switch (config.backend) {
     case SimulationConfig::Backend::DELAY: {
       if (beamsim::mpiIsMain()) {
-        beamsim::Delay delay{random};
-        beamsim::DelayNetwork delay_network{delay};
+        routers.computeRoutes();
+        beamsim::DelayNetwork delay_network{routers};
         beamsim::Simulator simulator{delay_network};
         run(simulator);
       }
@@ -420,8 +420,8 @@ void run_simulation(const SimulationConfig &config) {
     }
     case SimulationConfig::Backend::QUEUE: {
       if (beamsim::mpiIsMain()) {
-        beamsim::Delay delay{random};
-        beamsim::QueueNetwork queue_network{delay};
+        routers.computeRoutes();
+        beamsim::QueueNetwork queue_network{routers};
         beamsim::Simulator simulator{queue_network};
         run(simulator);
       }

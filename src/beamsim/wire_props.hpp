@@ -1,5 +1,7 @@
 #pragma once
 
+#include <beamsim/message.hpp>
+#include <beamsim/time.hpp>
 #include <cstdint>
 
 namespace beamsim {
@@ -13,11 +15,19 @@ namespace beamsim {
     WireProps(uint64_t bitrate, uint32_t delay_ms)
         : WireProps{Inv{1.0 / bitrate}, delay_ms} {}
 
+    static const WireProps kZero;
+
     static WireProps add(const WireProps &w1, const WireProps &w2) {
       return WireProps{
           Inv{w1.bitrate_inv.v + w2.bitrate_inv.v},
           w1.delay_ms + w2.delay_ms,
       };
+    }
+
+    Time delay(MessageSize message_size) const {
+      return std::chrono::milliseconds{delay_ms}
+           + std::chrono::seconds{
+               static_cast<uint64_t>(message_size * bitrate_inv.v)};
     }
 
     uint64_t bitrate() const {
@@ -27,4 +37,5 @@ namespace beamsim {
     Inv bitrate_inv;  // "1 / bitrate"
     uint32_t delay_ms;
   };
+  const WireProps WireProps::kZero{WireProps::Inv{0}, 0};
 }  // namespace beamsim

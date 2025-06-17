@@ -3,11 +3,16 @@
 #include <beamsim/example/roles.hpp>
 #include <beamsim/random.hpp>
 #include <beamsim/wire_props.hpp>
+#include <deque>
 
 namespace beamsim {
   struct Routers {
     struct PeerWire {
       PeerIndex router_index;
+      WireProps wire;
+    };
+    struct Route {
+      PeerIndex next;
       WireProps wire;
     };
 
@@ -117,7 +122,61 @@ namespace beamsim {
       router_wires_.at(router2).emplace(router1, wire);
     }
 
+    void computeRoutes() {
+      if (not routes_.empty()) {
+        return;
+      }
+      auto less = [](const WireProps &w1, const WireProps &w2) {
+        return w1.bitrate_inv.v <= w2.bitrate_inv.v
+           and w1.delay_ms <= w2.delay_ms;
+      };
+      auto n = router_wires_.size();
+      routes_.resize(n);
+      for (PeerIndex i1 = 0; i1 < n; ++i1) {
+        routes_.at(i1).resize(n, Route{i1, WireProps::kZero});
+      }
+      std::deque<Route> queue;
+      for (PeerIndex i0 = 0; i0 < n; ++i0) {
+        queue.emplace_back(i0, WireProps::kZero);
+        while (not queue.empty()) {
+          auto [i1, wire10] = queue.front();
+          queue.pop_front();
+          for (auto &[i2, wire21] : router_wires_.at(i1)) {
+            if (i2 == i0) {
+              continue;
+            }
+            auto &route20 = routes_.at(i2).at(i0);
+            auto wire20 = WireProps::add(wire10, wire21);
+            if (route20.wire.bitrate_inv.v == 0 or less(wire20, route20.wire)) {
+              route20.next = i1;
+              route20.wire = wire20;
+              queue.emplace_back(i2, wire20);
+            }
+          }
+        }
+      }
+      for (PeerIndex i1 = 0; i1 < n; ++i1) {
+        auto &row = routes_.at(i1);
+        for (PeerIndex i2 = 0; i2 < n; ++i2) {
+          assert2(i2 == i1 or row.at(i2).next != i1);
+        }
+      }
+    }
+
+    auto directWire3(PeerIndex peer1, PeerIndex peer2) const {
+      auto &[router1, wire1] = peer_wire_.at(peer1);
+      auto &[router2, wire2] = peer_wire_.at(peer2);
+      auto &wire12 = routes_.at(router1).at(router2).wire;
+      return std::make_tuple(
+          std::cref(wire1), std::cref(wire12), std::cref(wire2));
+    }
+    WireProps directWire(PeerIndex peer1, PeerIndex peer2) const {
+      auto [wire1, wire12, wire2] = directWire3(peer1, peer2);
+      return WireProps::add(wire1, WireProps::add(wire12, wire2));
+    }
+
     std::vector<PeerWire> peer_wire_;
     std::vector<std::unordered_map<PeerIndex, WireProps>> router_wires_;
+    std::vector<std::vector<Route>> routes_;
   };
 }  // namespace beamsim
