@@ -220,6 +220,11 @@ struct Args {
 
 struct Yaml {
   using Path = std::vector<std::string>;
+
+  struct KnownPaths {
+    std::map<std::string, KnownPaths> children;
+  };
+
   struct Value {
     template <typename T>
     void get(T &value, const Args::Enum<T> &enum_) const {
@@ -268,15 +273,53 @@ struct Yaml {
     YAML::Node node;
   };
 
-  Value at(Path path) const {
+  Value at(Path path) {
     std::optional<const YAML::Node> node = root;
+    auto *known = &known_paths;
     for (auto &key : path) {
       node.emplace(node.value()[key]);
+      known = &known->children[key];
     }
     return Value{path, node.value()};
   }
 
+  static void checkUnknown(Path &path,
+                           YAML::Node node,
+                           const KnownPaths &known) {
+    assert2(node.IsDefined());
+    if (node.IsMap()) {
+      for (auto x : node) {
+        auto key = x.first.as<std::string>();
+        path.emplace_back(key);
+        auto it = known.children.find(key);
+        if (it == known.children.end()) {
+          std::string s;
+
+          auto first = true;
+          for (auto &key : path) {
+            if (first) {
+              first = false;
+            } else {
+              s += ".";
+            }
+            s += key;
+          }
+          std::println("unknown yaml keys: {}", s);
+        }
+        checkUnknown(path,
+                     x.second,
+                     it == known.children.end() ? KnownPaths{} : it->second);
+        path.pop_back();
+      }
+    }
+  }
+  void checkUnknown() const {
+    Path path;
+    checkUnknown(path, root, known_paths);
+  }
+
   YAML::Node root;
+  KnownPaths known_paths;
 };
 
 // CLI Configuration
@@ -389,6 +432,8 @@ struct SimulationConfig {
     yaml.at({"consts", "signature_size"}).get(consts.signature_size);
     yaml.at({"consts", "snark_time"}).get(consts.snark_time);
     yaml.at({"consts", "snark_size"}).get(consts.snark_size);
+
+    yaml.checkUnknown();
   }
 
   void validate() {
