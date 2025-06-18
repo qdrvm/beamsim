@@ -18,8 +18,18 @@ add_compile_options(
   -Werror-switch
 )
 
+include(FetchContent)
+
+FetchContent_Declare(
+  yaml-cpp
+  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+  GIT_TAG 0.8.0
+)
+FetchContent_MakeAvailable(yaml-cpp)
+
 add_executable(main main.cpp)
 target_include_directories(main PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(main yaml-cpp::yaml-cpp)
 
 find_package(ns3 CONFIG)
 if(ns3_FOUND)

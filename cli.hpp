@@ -1,5 +1,7 @@
 #pragma once
 
+#include <yaml-cpp/yaml.h>
+
 #include <beamsim/example/roles.hpp>
 #include <beamsim/ns3/mpi.hpp>
 #include <charconv>
@@ -133,6 +135,17 @@ struct Args {
     }
   };
 
+  struct FlagStr : Flag<std::string> {
+    bool parse(std::string, Args &args) const {
+      auto arg = args.next();
+      if (not arg) {
+        return false;
+      }
+      value_ = arg.value();
+      return true;
+    }
+  };
+
   template <typename... A>
   static void help(const A &...a) {
     std::vector<std::string> lines;
@@ -204,6 +217,40 @@ struct Args {
   std::span<char *> args_;
 };
 
+struct Yaml {
+  using Path = std::vector<std::string>;
+  struct Value {
+    template <typename T>
+    void get(T &value, const Args::Enum<T> &enum_) const {
+      if (not node.IsDefined()) {
+        return;
+      }
+      value = enum_.parse(node.as<std::string>()).value();
+    }
+
+    template <typename T>
+    void get(T &value) const {
+      if (not node.IsDefined()) {
+        return;
+      }
+      value = node.as<T>();
+    }
+
+    Path path;
+    YAML::Node node;
+  };
+
+  Value at(Path path) const {
+    std::optional<const YAML::Node> node = root;
+    for (auto &key : path) {
+      node.emplace(node.value()[key]);
+    }
+    return Value{path, node.value()};
+  }
+
+  YAML::Node root;
+};
+
 // CLI Configuration
 struct SimulationConfig {
   enum class Backend {
@@ -230,6 +277,12 @@ struct SimulationConfig {
       {Topology::GRID, "grid"},
   }};
 
+  std::string config_path;
+  Args::FlagStr flag_config_path{{
+      {"-c", "--config"},
+      config_path,
+      "yaml config path",
+  }};
   Backend backend = Backend::DELAY;
   Args::FlagEnum<decltype(backend)> flag_backend{
       {"-b", "--backend"},
@@ -265,7 +318,8 @@ struct SimulationConfig {
     SimulationConfig config;
     std::println("Usage: {} [options]", program_name);
     std::println("Options:");
-    Args::help(config.flag_backend,
+    Args::help(config.flag_config_path,
+               config.flag_backend,
                config.flag_topology,
                config.flag_group_count,
                config.flag_validators_per_group,
@@ -274,12 +328,28 @@ struct SimulationConfig {
   }
 
   bool parse_args(int argc, char **argv) {
-    return Args{argc, argv}.parse(flag_backend,
-                                  flag_topology,
-                                  flag_group_count,
-                                  flag_validators_per_group,
-                                  flag_shuffle,
-                                  flag_help);
+    if (not Args{argc, argv}.parse(flag_config_path,
+                                   flag_backend,
+                                   flag_topology,
+                                   flag_group_count,
+                                   flag_validators_per_group,
+                                   flag_shuffle,
+                                   flag_help)) {
+      return false;
+    }
+    if (not config_path.empty()) {
+      yaml();
+    }
+    return true;
+  }
+
+  void yaml() {
+    Yaml yaml{YAML::LoadFile(config_path)};
+    yaml.at({"backend"}).get(backend, enum_backend_);
+    yaml.at({"topology"}).get(topology, enum_topology_);
+    yaml.at({"groups"}).get(group_count);
+    yaml.at({"group-validators"}).get(validators_per_group);
+    yaml.at({"shuffle"}).get(shuffle);
   }
 
   void validate() {
