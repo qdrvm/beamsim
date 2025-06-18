@@ -14,8 +14,6 @@
 
 #include "cli.hpp"
 
-// TODO: const -> config
-
 namespace beamsim::example {
   std::string report_lines;
   template <typename... A>
@@ -51,9 +49,6 @@ namespace beamsim::example {
 }  // namespace beamsim::example
 
 namespace beamsim::example {
-  constexpr auto kTimeSignature = std::chrono::milliseconds{20};
-  constexpr auto kTimeSnark = std::chrono::milliseconds{200};
-
   constexpr auto kStopOnCreateSnark2 = true;
 
   struct SharedState {
@@ -82,7 +77,7 @@ namespace beamsim::example {
       if (peer_index_ == shared_state_.roles.global_aggregator) {
         aggregating_snark2.emplace();
       }
-      simulator_.runAfter(kTimeSignature, [this] {
+      simulator_.runAfter(consts().signature_time, [this] {
         MessageSignature signature{peer_index_};
         onMessageSignature(signature);
         sendSignature(std::move(signature));
@@ -105,7 +100,7 @@ namespace beamsim::example {
       auto snark1 = std::move(aggregating_snark1.value());
       aggregating_snark1.reset();
       simulator_.runAfter(
-          kTimeSnark, [this, snark1{std::move(snark1)}]() mutable {
+          consts().snark_time, [this, snark1{std::move(snark1)}]() mutable {
             report(simulator_, "snark1_sent", snark1.peer_indices.ones());
             onMessageSnark1(snark1);
             sendSnark1(std::move(snark1));
@@ -125,7 +120,7 @@ namespace beamsim::example {
       }
       auto snark2 = std::move(aggregating_snark2.value());
       aggregating_snark2.reset();
-      simulator_.runAfter(kTimeSnark,
+      simulator_.runAfter(consts().snark_time,
                           [this, snark2{std::move(snark2)}]() mutable {
                             report(simulator_, "snark2_sent");
                             if (kStopOnCreateSnark2) {
@@ -373,7 +368,6 @@ void run_simulation(const SimulationConfig &config) {
       config.group_count * config.validators_per_group + 1, config.group_count);
   auto routers = beamsim::Routers::make(random, roles, config.shuffle);
   routers.computeRoutes();
-  beamsim::gossip::Config gossip_config{3, 1};
 
   auto run = [&](auto &simulator) {
     beamsim::Stopwatch t_run;
@@ -397,7 +391,8 @@ void run_simulation(const SimulationConfig &config) {
 
         auto subscribe = [&](beamsim::gossip::TopicIndex topic_index,
                              const std::vector<beamsim::PeerIndex> &peers) {
-          auto views = beamsim::gossip::generate(random, gossip_config, peers);
+          auto views =
+              beamsim::gossip::generate(random, config.gossip_config, peers);
           for (size_t i = 0; i < peers.size(); ++i) {
             auto &peer_index = peers.at(i);
             for (auto &to_peer : views.at(i).peers) {

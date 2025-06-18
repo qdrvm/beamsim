@@ -3,6 +3,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <beamsim/example/roles.hpp>
+#include <beamsim/gossip/config.hpp>
 #include <beamsim/ns3/mpi.hpp>
 #include <charconv>
 #include <print>
@@ -225,7 +226,30 @@ struct Yaml {
       if (not node.IsDefined()) {
         return;
       }
-      value = enum_.parse(node.as<std::string>()).value();
+      auto r = enum_.parse(node.as<std::string>());
+      if (not r) {
+        error();
+      }
+      value = r.value();
+    }
+
+    void get(beamsim::Time &value) const {
+      if (not node.IsDefined()) {
+        return;
+      }
+      auto str = node.as<std::string>();
+      auto end = str.data() + str.size();
+      uint64_t count;
+      auto r = std::from_chars(str.data(), end, count);
+      if (r.ec != std::errc{}) {
+        error();
+      }
+      std::string_view suffix(r.ptr, end - r.ptr);
+      if (suffix == "ms") {
+        value = std::chrono::milliseconds{count};
+      } else {
+        error();
+      }
     }
 
     template <typename T>
@@ -234,6 +258,10 @@ struct Yaml {
         return;
       }
       value = node.as<T>();
+    }
+
+    void error() const {
+      throw YAML::BadConversion{node.Mark()};
     }
 
     Path path;
@@ -314,6 +342,8 @@ struct SimulationConfig {
   bool help = false;
   Args::FlagBool flag_help{{{"-h", "--help"}, help, "Show this help message"}};
 
+  beamsim::gossip::Config gossip_config;
+
   static void print_usage(const char *program_name) {
     SimulationConfig config;
     std::println("Usage: {} [options]", program_name);
@@ -348,8 +378,17 @@ struct SimulationConfig {
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
     yaml.at({"groups"}).get(group_count);
-    yaml.at({"group-validators"}).get(validators_per_group);
+    yaml.at({"group_validators"}).get(validators_per_group);
     yaml.at({"shuffle"}).get(shuffle);
+
+    yaml.at({"gossip", "mesh_n"}).get(gossip_config.mesh_n);
+    yaml.at({"gossip", "non_mesh_n"}).get(gossip_config.non_mesh_n);
+
+    auto &consts = beamsim::consts();
+    yaml.at({"consts", "signature_time"}).get(consts.signature_time);
+    yaml.at({"consts", "signature_size"}).get(consts.signature_size);
+    yaml.at({"consts", "snark_time"}).get(consts.snark_time);
+    yaml.at({"consts", "snark_size"}).get(consts.snark_size);
   }
 
   void validate() {

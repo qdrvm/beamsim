@@ -1,5 +1,6 @@
 #pragma once
 
+#include <beamsim/consts.hpp>
 #include <beamsim/message.hpp>
 #include <beamsim/peer_index.hpp>
 #include <bit>
@@ -7,9 +8,6 @@
 #include <vector>
 
 namespace beamsim::example {
-  constexpr size_t kSizeSignature = 1536;
-  constexpr size_t kSizeSnark = 131072;
-
   struct BitSet {
     friend void encodeTo(MessageEncodeTo &to, const BitSet &v) {
       encodeTo(to, v.limbs_);
@@ -66,12 +64,12 @@ namespace beamsim::example {
     // IMessage
     MessageSize padding() const override {
       if (std::holds_alternative<MessageSignature>(variant)) {
-        return kSizeSignature;
+        return consts().signature_size;
       } else if (std::holds_alternative<MessageSnark1>(variant)) {
-        return kSizeSnark;
+        return consts().snark_size;
       } else {
         std::get<MessageSnark2>(variant);
-        return kSizeSnark;
+        return consts().snark_size;
       }
     }
     void encode(MessageEncodeTo &to) const override {
