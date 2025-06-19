@@ -97,12 +97,10 @@ namespace beamsim::example {
 
     void begin(ISimulator &simulator) {
       simulator_ = &simulator;
-      setTimer();
+      onTimer();
     }
 
-    void setTimer() {
-      simulator_->runAfter(std::chrono::milliseconds{1}, [this] { onTimer(); });
-    }
+    static constexpr std::chrono::milliseconds kBucket{1};
 
     void onTimer() {
       for (auto *per_role : {&messages_, &bytes_}) {
@@ -112,22 +110,24 @@ namespace beamsim::example {
           }
         }
       }
-      setTimer();
+      simulator_->runAfter(kBucket, [this] { onTimer(); });
     }
 
-    void end() {
+    void end(Time time) {
       size_t global_aggregators = 1;
       report(*simulator_,
              "metrics-roles",
              roles_.validator_count - roles_.aggregators.size(),
              roles_.aggregators.size() - global_aggregators,
              global_aggregators);
-      std::array<const PerRole *, 2> all{&messages_, &bytes_};
+      auto n = time / kBucket;
+      std::array<PerRole *, 2> all{&messages_, &bytes_};
       for (auto i1 = 0; i1 < 2; ++i1) {
         for (auto i2 = 0; i2 < 3; ++i2) {
           for (auto i3 = 0; i3 < 2; ++i3) {
-            report(
-                *simulator_, "metrics", i1, i2, i3, all.at(i1)->at(i2).at(i3));
+            auto &v = all.at(i1)->at(i2).at(i3);
+            v.resize(n);
+            report(*simulator_, "metrics", i1, i2, i3, v);
           }
         }
       }
@@ -543,7 +543,7 @@ void run_simulation(const SimulationConfig &config) {
                    beamsim::ms(t_run.time()),
                    done ? "SUCCESS" : "FAILURE");
     }
-    metrics.end();
+    metrics.end(simulator_time);
     beamsim::example::report_flush();
   };
 
