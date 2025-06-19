@@ -277,7 +277,9 @@ struct Yaml {
     std::optional<const YAML::Node> node = root;
     auto *known = &known_paths;
     for (auto &key : path) {
-      node.emplace(node.value()[key]);
+      if (node->IsDefined()) {
+        node.emplace(node.value()[key]);
+      }
       known = &known->children[key];
     }
     return Value{path, node.value()};
@@ -319,7 +321,7 @@ struct Yaml {
   }
 
   YAML::Node root;
-  KnownPaths known_paths;
+  KnownPaths known_paths{};
 };
 
 // CLI Configuration

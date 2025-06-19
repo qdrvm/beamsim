@@ -7,7 +7,8 @@
 namespace beamsim {
   class Simulator : public ISimulator {
    public:
-    Simulator(INetwork &network) : network_{network} {
+    Simulator(INetwork &network, IMetrics *metrics)
+        : network_{network}, metrics_{metrics} {
       network_.simulator_ = this;
     }
 
@@ -34,12 +35,22 @@ namespace beamsim {
     void send(PeerIndex from_peer,
               PeerIndex to_peer,
               MessagePtr any_message) override {
+      if (metrics_ != nullptr) {
+        metrics_->onPeerSentMessage(from_peer);
+        metrics_->onPeerSentBytes(
+            from_peer, any_message->dataSize() + any_message->padding());
+      }
       network_.send(from_peer, to_peer, std::move(any_message));
     }
     // used by "INetwork"
     void _receive(PeerIndex from_peer,
                   PeerIndex to_peer,
                   MessagePtr any_message) override {
+      if (metrics_ != nullptr) {
+        metrics_->onPeerReceivedMessage(to_peer);
+        metrics_->onPeerReceivedBytes(
+            to_peer, any_message->dataSize() + any_message->padding());
+      }
       peers_.at(to_peer)->onMessage(from_peer, std::move(any_message));
     }
     void connect(PeerIndex, PeerIndex) override {}
@@ -79,6 +90,7 @@ namespace beamsim {
 
    private:
     INetwork &network_;
+    IMetrics *metrics_;
     bool stop_ = false;
     Time time_ = Time::zero();
     // https://en.cppreference.com/w/cpp/container/multimap.html

@@ -8,6 +8,15 @@
 namespace beamsim {
   using OnTimer = std::function<void()>;
 
+  class IMetrics {
+   public:
+    virtual ~IMetrics() = default;
+    virtual void onPeerReceivedMessage(PeerIndex) = 0;
+    virtual void onPeerSentMessage(PeerIndex) = 0;
+    virtual void onPeerReceivedBytes(PeerIndex, MessageSize) = 0;
+    virtual void onPeerSentBytes(PeerIndex, MessageSize) = 0;
+  };
+
   class ISimulator;
 
   class INetwork {

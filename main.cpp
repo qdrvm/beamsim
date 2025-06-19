@@ -16,36 +16,135 @@
 
 namespace beamsim::example {
   std::string report_lines;
+
+  struct Json {
+    void write(const std::integral auto &v) {
+      json += std::to_string(v);
+    }
+    void write(std::string_view v) {
+      json += "\"";
+      json += v;
+      json += "\"";
+    }
+    template <typename T>
+    void write(const std::vector<T> &v) {
+      json += "[";
+      auto first = true;
+      for (auto &x : v) {
+        if (first) {
+          first = false;
+        } else {
+          json += ",";
+        }
+        write(x);
+      }
+      json += "]";
+    }
+    template <typename T, typename... A>
+    void writeTuple(const T &v, const A &...a) {
+      json += "[";
+      write(v);
+      auto f = [&](const auto &a) mutable {
+        json += ",";
+        write(a);
+      };
+      (f(a), ...);
+      json += "]";
+    }
+    std::string json;
+  };
+
   template <typename... A>
   void report(const ISimulator &simulator, const A &...a) {
-    std::string line;
-    line += "[";
-    auto arg = [&, first = true](const auto &a) mutable {
-      if (first) {
-        first = false;
-      } else {
-        line += ",";
-      }
-      using T = std::remove_cvref_t<decltype(a)>;
-      if constexpr (std::integral<T>) {
-        line += std::to_string(a);
-      } else {
-        std::string_view s = a;
-        line += "\"";
-        line += s;
-        line += "\"";
-      }
-    };
-    arg("report");
-    arg(ms(simulator.time()));
-    (arg(a), ...);
-    line += "]";
-    line += "\n";
-    report_lines += line;
+    Json json;
+    json.writeTuple("report", ms(simulator.time()), a...);
+    report_lines += json.json;
+    report_lines += "\n";
   }
   void report_flush() {
     std::print("{}", report_lines);
   }
+
+  class Metrics : public IMetrics {
+   public:
+    enum Role : uint8_t { Validator, LocalAggregator, GlobalAggregator };
+    enum InOut : uint8_t { In, Out };
+    using PerInOut = std::array<std::vector<uint64_t>, 2>;
+    using PerRole = std::array<PerInOut, 3>;
+
+    Metrics(Roles &roles) : roles_{roles} {}
+
+    // IMetrics
+    void onPeerReceivedMessage(PeerIndex peer_index) {
+      add(messages_, peer_index, In, 1);
+    }
+    void onPeerSentMessage(PeerIndex peer_index) {
+      add(messages_, peer_index, Out, 1);
+    }
+    void onPeerReceivedBytes(PeerIndex peer_index, MessageSize size) {
+      add(bytes_, peer_index, In, size);
+    }
+    void onPeerSentBytes(PeerIndex peer_index, MessageSize size) {
+      add(bytes_, peer_index, Out, size);
+    }
+
+    void begin(ISimulator &simulator) {
+      simulator_ = &simulator;
+      setTimer();
+    }
+
+    void setTimer() {
+      simulator_->runAfter(std::chrono::milliseconds{1}, [this] { onTimer(); });
+    }
+
+    void onTimer() {
+      for (auto *per_role : {&messages_, &bytes_}) {
+        for (auto &per_in_out : *per_role) {
+          for (auto &bucket : per_in_out) {
+            bucket.emplace_back(0);
+          }
+        }
+      }
+      setTimer();
+    }
+
+    void end() {
+      size_t global_aggregators = 1;
+      report(*simulator_,
+             "metrics-roles",
+             roles_.validator_count - roles_.aggregators.size(),
+             roles_.aggregators.size() - global_aggregators,
+             global_aggregators);
+      std::array<const PerRole *, 2> all{&messages_, &bytes_};
+      for (auto i1 = 0; i1 < 2; ++i1) {
+        for (auto i2 = 0; i2 < 3; ++i2) {
+          for (auto i3 = 0; i3 < 2; ++i3) {
+            report(
+                *simulator_, "metrics", i1, i2, i3, all.at(i1)->at(i2).at(i3));
+          }
+        }
+      }
+    }
+
+    void add(PerRole &per_role,
+             PeerIndex peer_index,
+             InOut in_out,
+             uint64_t add) {
+      auto role =
+          peer_index == roles_.global_aggregator ? GlobalAggregator
+          : peer_index
+                  == roles_.groups.at(roles_.group_of_validator.at(peer_index))
+                         .local_aggregator
+              ? LocalAggregator
+              : Validator;
+      per_role.at(role).at(in_out).back() += add;
+    }
+
+    Roles &roles_;
+    ISimulator *simulator_ = nullptr;
+    PerRole messages_;
+    PerRole bytes_;
+  };
 }  // namespace beamsim::example
 
 namespace beamsim::example {
@@ -368,6 +467,7 @@ void run_simulation(const SimulationConfig &config) {
       config.group_count * config.validators_per_group + 1, config.group_count);
   auto routers = beamsim::Routers::make(random, roles, config.shuffle);
   routers.computeRoutes();
+  beamsim::example::Metrics metrics{roles};
 
   auto run = [&](auto &simulator) {
     beamsim::Stopwatch t_run;
@@ -377,6 +477,7 @@ void run_simulation(const SimulationConfig &config) {
                              "info",
                              roles.validator_count,
                              shared_state.snark2_threshold());
+    metrics.begin(simulator);
 
     switch (config.topology) {
       case SimulationConfig::Topology::DIRECT: {
@@ -435,6 +536,7 @@ void run_simulation(const SimulationConfig &config) {
                    beamsim::ms(t_run.time()),
                    done ? "SUCCESS" : "FAILURE");
     }
+    metrics.end();
     beamsim::example::report_flush();
   };
 
@@ -443,7 +545,7 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::DELAY: {
       if (beamsim::mpiIsMain()) {
         beamsim::DelayNetwork delay_network{routers};
-        beamsim::Simulator simulator{delay_network};
+        beamsim::Simulator simulator{delay_network, &metrics};
         run(simulator);
       }
       break;
@@ -451,7 +553,7 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::QUEUE: {
       if (beamsim::mpiIsMain()) {
         beamsim::QueueNetwork queue_network{routers};
-        beamsim::Simulator simulator{queue_network};
+        beamsim::Simulator simulator{queue_network, &metrics};
         run(simulator);
       }
       break;
@@ -459,7 +561,7 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::NS3:
     case SimulationConfig::Backend::NS3_DIRECT: {
 #ifdef ns3_FOUND
-      beamsim::ns3_::Simulator simulator;
+      beamsim::ns3_::Simulator simulator{&metrics};
       if (config.backend == SimulationConfig::Backend::NS3) {
         simulator.routing_.initRouters(routers);
       } else {

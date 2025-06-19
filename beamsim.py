@@ -1,6 +1,7 @@
 import json
 import subprocess
 import os
+import numpy as np
 
 
 def parse_report(lines):
@@ -22,6 +23,21 @@ def filter_report(items, type_):
 
 def time_axis(items):
     return [x[0] for x in items]
+
+
+class Metrics:
+    def __init__(self, items):
+        rows = filter_report(items, "metrics")
+        _, _, *roles = filter_report(items, "metrics-roles")[0]
+        self.t = max(len(row[5]) for row in rows)
+        self.a = np.zeros((2, 3, 2, self.t))
+        for _, _, i1, i2, i3, bucket in rows:
+            self.a[i1, i2, i3, : len(bucket)] += bucket
+        self.messages_sent_role = [np.cumsum(self.a[0][i][1]) for i in range(3)]
+        self.messages_sent_all = np.sum(self.messages_sent_role, axis=0)
+        self.bytes_sent_role = [np.cumsum(self.a[1][i][1]) for i in range(3)]
+        self.bytes_sent_all = np.sum(self.bytes_sent_role, axis=0)
+        self.bytes_sent_role_avg = [a / n for a, n in zip(self.bytes_sent_role, roles)]
 
 
 exe = "build/main"

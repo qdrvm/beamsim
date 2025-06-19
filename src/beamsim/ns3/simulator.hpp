@@ -246,7 +246,7 @@ namespace beamsim::ns3_ {
 
   class Simulator : public ISimulator {
    public:
-    Simulator() {
+    Simulator(IMetrics *metrics) : metrics_{metrics} {
       if (mpiSize() > 0) {
         ns3::MpiInterface::Enable(MPI_COMM_WORLD);
       }
@@ -279,6 +279,9 @@ namespace beamsim::ns3_ {
     void send(PeerIndex from_peer,
               PeerIndex to_peer,
               MessagePtr message) override {
+      if (metrics_ != nullptr) {
+        metrics_->onPeerSentMessage(from_peer);
+      }
       std::optional<MessageId> message_id;
       if (cache_messages_ and isLocalPeer(to_peer)) {
         message_id = next_message_id_;
@@ -317,6 +320,7 @@ namespace beamsim::ns3_ {
     }
 
     void run(Time timeout) {
+      traceMetrics();
       routing_.populateRoutingTables();
 
       ns3::Simulator::Stop(timeToNs3(timeout));
@@ -324,10 +328,45 @@ namespace beamsim::ns3_ {
       ns3::Simulator::Stop();
     }
 
+    void traceMetrics() {
+      if (metrics_ == nullptr) {
+        return;
+      }
+      for (PeerIndex i = 0; i < routing_.peers_.GetN(); ++i) {
+        if (not isLocalPeer(i)) {
+          continue;
+        }
+        auto node = routing_.peers_.Get(i);
+        for (uint32_t j = 0; j < node->GetNDevices(); ++j) {
+          auto dev = node->GetDevice(j);
+          if (not dev->IsPointToPoint()) {
+            continue;
+          }
+          dev->TraceConnectWithoutContext(
+              "MacRx",
+              ns3::MakeCallback(&Simulator::traceOnPeerReceivedBytes, this, i));
+          dev->TraceConnectWithoutContext(
+              "MacTx",
+              ns3::MakeCallback(&Simulator::traceOnPeerSentBytes, this, i));
+        }
+      }
+    }
+
+    void traceOnPeerReceivedBytes(PeerIndex peer_index,
+                                  ns3::Ptr<const ns3::Packet> packet) {
+      metrics_->onPeerReceivedBytes(peer_index, packet->GetSize());
+    }
+
+    void traceOnPeerSentBytes(PeerIndex peer_index,
+                              ns3::Ptr<const ns3::Packet> packet) {
+      metrics_->onPeerSentBytes(peer_index, packet->GetSize());
+    }
+
     bool isLocalPeer(PeerIndex peer_index) const {
       return routing_.peers_.Get(peer_index)->GetSystemId() == mpiIndex();
     }
 
+    IMetrics *metrics_;
     bool cache_messages_ = true;
     std::vector<ns3::Ptr<Application>> applications_;
     Routing routing_;
@@ -387,6 +426,9 @@ namespace beamsim::ns3_ {
           } else {
             MessageDecodeFrom data{item.data};
             message = simulator_.message_decode_(data);
+          }
+          if (simulator_.metrics_ != nullptr) {
+            simulator_.metrics_->onPeerReceivedMessage(state.peer_index);
           }
           peer_->onMessage(state.peer_index, std::move(message));
           continue;
