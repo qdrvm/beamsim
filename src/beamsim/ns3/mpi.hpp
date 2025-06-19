@@ -50,4 +50,32 @@ namespace beamsim {
 #endif
     return r;
   }
+
+  inline std::string mpiRecvStr(MpiIndex from, int tag = 0) {
+#ifdef ns3_FOUND
+    std::string s;
+    uint32_t size;
+    MPI_Recv(
+        &size, 1, MPI_UINT32_T, from, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    s.resize(size);
+    MPI_Recv(s.data(),
+             size,
+             MPI_UINT8_T,
+             from,
+             tag,
+             MPI_COMM_WORLD,
+             MPI_STATUS_IGNORE);
+    return s;
+#else
+    abort();
+#endif
+  }
+
+  inline void mpiSendStr(MpiIndex to, std::string_view s, int tag = 0) {
+#ifdef ns3_FOUND
+    uint32_t size = s.size();
+    MPI_Send(&size, 1, MPI_UINT32_T, to, tag, MPI_COMM_WORLD);
+    MPI_Send(s.data(), size, MPI_UINT8_T, to, tag, MPI_COMM_WORLD);
+#endif
+  }
 }  // namespace beamsim

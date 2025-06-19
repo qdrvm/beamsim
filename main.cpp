@@ -62,7 +62,14 @@ namespace beamsim::example {
     report_lines += "\n";
   }
   void report_flush() {
-    std::print("{}", report_lines);
+    if (mpiIsMain()) {
+      std::print("{}", report_lines);
+      for (MpiIndex i = 1; i < mpiSize(); ++i) {
+        std::print("{}", mpiRecvStr(i));
+      }
+    } else {
+      mpiSendStr(0, report_lines);
+    }
   }
 
   class Metrics : public IMetrics {
@@ -598,7 +605,9 @@ int main(int argc, char **argv) {
 #ifdef ns3_FOUND
   MPI_Init(&argc, &argv);
 #else
-  std::println("ns3 not found");
+  if (beamsim::mpiIsMain()) {
+    std::println("ns3 not found");
+  }
 #endif
 
   SimulationConfig config;
