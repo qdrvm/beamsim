@@ -54,16 +54,21 @@ run_cache = dict()
 run_exe_time = None
 
 
-def run(b="ns3", t="direct", g=10, gv=10, shuffle=False):
+def run(b="ns3", t="direct", g=10, gv=10, shuffle=False, mpi=False):
     global run_exe_time
     exe_time = os.stat(exe).st_mtime
     if run_exe_time != exe_time:
         run_exe_time = exe_time
         run_cache.clear()
-    key = (b, t, g, gv, shuffle)
+    key = (b, t, g, gv, shuffle, mpi)
     output = run_cache.get(key, None)
     if output is None:
         cmd = [
+            *(
+                (["mpirun"] if mpi else [])
+                if isinstance(mpi, bool)
+                else ["mpirun", "-n", str(mpi)]
+            ),
             exe,
             "-b",
             b,
