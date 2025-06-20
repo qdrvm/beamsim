@@ -7,6 +7,7 @@
 
 #include <beamsim/ns3/mpi.hpp>
 #include <beamsim/routers.hpp>
+#include <beamsim/std_hash.hpp>
 #include <beamsim/time.hpp>
 #include <unordered_set>
 

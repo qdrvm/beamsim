@@ -74,7 +74,6 @@ namespace beamsim::example {
 
   class Metrics : public IMetrics {
    public:
-    enum Role : uint8_t { Validator, LocalAggregator, GlobalAggregator };
     enum InOut : uint8_t { In, Out };
     using PerInOut = std::array<std::vector<uint64_t>, 2>;
     using PerRole = std::array<PerInOut, 3>;
@@ -114,7 +113,7 @@ namespace beamsim::example {
     }
 
     void end(Time time) {
-      size_t global_aggregators = 1;
+      size_t global_aggregators = roles_.global_aggregators.size();
       report(*simulator_,
              "metrics-roles",
              roles_.validator_count - roles_.aggregators.size(),
@@ -137,14 +136,9 @@ namespace beamsim::example {
              PeerIndex peer_index,
              InOut in_out,
              uint64_t add) {
-      auto role =
-          peer_index == roles_.global_aggregator ? GlobalAggregator
-          : peer_index
-                  == roles_.groups.at(roles_.group_of_validator.at(peer_index))
-                         .local_aggregator
-              ? LocalAggregator
-              : Validator;
-      per_role.at(role).at(in_out).back() += add;
+      per_role.at(std::to_underlying(roles_.roles.at(peer_index)))
+          .at(in_out)
+          .back() += add;
     }
 
     Roles &roles_;
@@ -177,10 +171,10 @@ namespace beamsim::example {
 
     // IPeer
     void onStart() override {
-      if (peer_index_ == group_.local_aggregator) {
+      if (role() == Role::LocalAggregator) {
         aggregating_snark1.emplace();
       }
-      if (peer_index_ == shared_state_.roles.global_aggregator) {
+      if (role() == Role::GlobalAggregator) {
         aggregating_snark2.emplace();
       }
       simulator_.runAfter(consts().signature_time, [this] {
@@ -255,6 +249,10 @@ namespace beamsim::example {
       simulator_.stop();
     }
 
+    Role role() const {
+      return shared_state_.roles.roles.at(peer_index_);
+    }
+
     SharedState &shared_state_;
     GroupIndex group_index_;
     const Roles::Group &group_;
@@ -270,57 +268,81 @@ namespace beamsim::example {
     static void connect(ISimulator &simulator, const Roles &roles) {
       for (PeerIndex i = 0; i < roles.validator_count; ++i) {
         auto &group = roles.groups.at(roles.group_of_validator.at(i));
-        if (i == group.local_aggregator) {
-          simulator.connect(i, roles.global_aggregator);
+        if (roles.roles.at(i) == Role::LocalAggregator) {
+          for (auto &to_peer : roles.global_aggregators) {
+            simulator.connect(i, to_peer);
+          }
         } else {
-          simulator.connect(i, group.local_aggregator);
+          for (auto &to_peer : group.local_aggregators) {
+            simulator.connect(i, to_peer);
+          }
         }
       }
     }
 
     // IPeer
-    void onMessage(PeerIndex, MessagePtr any_message) override {
+    void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
       auto &message = dynamic_cast<Message &>(*any_message);
       if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
         onMessageSignature(*signature);
-      } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
-        onMessageSnark1(*snark1);
-      } else {
-        auto &snark2 = std::get<MessageSnark2>(message.variant);
-        // local aggregator forwards snark2 from global aggregator to group
-        if (peer_index_ == group_.local_aggregator) {
-          for (auto &peer_index : group_.validators) {
-            if (peer_index == peer_index_) {
+        // local aggregator forwards signature from validator to local aggregators
+        if (shared_state_.roles.roles.at(from_peer) != Role::LocalAggregator
+            and role() == Role::LocalAggregator) {
+          for (auto &to_peer : group_.local_aggregators) {
+            if (to_peer == peer_index_) {
               continue;
             }
-            if (peer_index == shared_state_.roles.global_aggregator) {
-              continue;
-            }
-            send(peer_index, any_message);
+            send(to_peer, any_message);
           }
         }
+      } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
+        onMessageSnark1(*snark1);
+        // global aggregator forwards snark1 from local aggregator to global aggregators
+        if (shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator
+            and role() == Role::GlobalAggregator) {
+          for (auto &to_peer : shared_state_.roles.global_aggregators) {
+            if (to_peer == peer_index_) {
+              continue;
+            }
+            send(to_peer, any_message);
+          }
+        }
+      } else {
+        auto &snark2 = std::get<MessageSnark2>(message.variant);
         onMessageSnark2(snark2);
+        std::println("not implemented: PeerDirect forward snark2");
+        abort();
       }
     }
 
     // PeerBase
     void sendSignature(MessageSignature message) override {
-      if (peer_index_ == group_.local_aggregator) {
-        return;
+      auto any_message = std::make_shared<Message>(message);
+      if (role() == Role::LocalAggregator) {
+        for (auto &to_peer : group_.local_aggregators) {
+          if (to_peer == peer_index_) {
+            continue;
+          }
+          send(to_peer, any_message);
+        }
+      } else {
+        send(group_.local_aggregators.at(
+                 group_.index_of_validators.at(peer_index_)
+                 % group_.local_aggregators.size()),
+             any_message);
       }
-      send(group_.local_aggregator, std::make_shared<Message>(message));
     }
     void sendSnark1(MessageSnark1 message) override {
-      assert2(peer_index_ == group_.local_aggregator);
-      send(shared_state_.roles.global_aggregator,
+      assert2(role() == Role::LocalAggregator);
+      send(shared_state_.roles.global_aggregators.at(
+               peer_index_ % shared_state_.roles.global_aggregators.size()),
            std::make_shared<Message>(message));
     }
     void sendSnark2(MessageSnark2 message) override {
-      assert2(peer_index_ == shared_state_.roles.global_aggregator);
+      assert2(role() == Role::GlobalAggregator);
       auto any_message = std::make_shared<Message>(message);
-      for (auto &group : shared_state_.roles.groups) {
-        send(group.local_aggregator, any_message);
-      }
+      std::println("not implemented: PeerDirect send snark2");
+      abort();
     }
   };
 
@@ -391,7 +413,7 @@ namespace beamsim::example {
           });
         };
         connect(group.validators, group.index_of_validators);
-        if (i1 == group.local_aggregator or i1 == roles.global_aggregator) {
+        if (roles.roles.at(i1) != Role::Validator) {
           connect(roles.aggregators, roles.index_of_aggregators);
         }
         connect(roles.validators, roles.validators);
@@ -470,8 +492,7 @@ namespace beamsim::example {
 
 void run_simulation(const SimulationConfig &config) {
   beamsim::Random random;
-  auto roles = beamsim::example::Roles::make(
-      config.group_count * config.validators_per_group + 1, config.group_count);
+  auto roles = beamsim::example::Roles::make(config.roles_config);
   auto routers = beamsim::Routers::make(random, roles, config.shuffle);
   routers.computeRoutes();
   beamsim::example::Metrics metrics{roles};

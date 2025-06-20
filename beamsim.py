@@ -25,6 +25,14 @@ def time_axis(items):
     return [x[0] for x in items]
 
 
+def get_snark1_received(items):
+    rows = filter_report(items, "snark1_received")
+    for i in reversed(range(1, len(rows))):
+        if rows[i][2] <= rows[i - 1][2]:
+            rows.pop(i)
+    return rows
+
+
 class Metrics:
     def __init__(self, items):
         rows = filter_report(items, "metrics")

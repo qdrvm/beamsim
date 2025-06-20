@@ -350,6 +350,8 @@ struct SimulationConfig {
       {Topology::GRID, "grid"},
   }};
 
+  beamsim::example::RolesConfig roles_config;
+
   std::string config_path;
   Args::FlagStr flag_config_path{{
       {"-c", "--config"},
@@ -370,16 +372,14 @@ struct SimulationConfig {
       "Communication topology",
       enum_topology_,
   };
-  beamsim::example::GroupIndex group_count = 4;
-  Args::FlagInt<decltype(group_count)> flag_group_count{{
+  Args::FlagInt<beamsim::example::GroupIndex> flag_group_count{{
       {"-g", "--groups"},
-      group_count,
+      roles_config.group_count,
       "Number of validator groups",
   }};
-  beamsim::PeerIndex validators_per_group = 3;
-  Args::FlagInt<decltype(validators_per_group)> flag_validators_per_group{{
+  Args::FlagInt<beamsim::PeerIndex> flag_validators_per_group{{
       {"-gv", "--group-validators"},
-      validators_per_group,
+      roles_config.group_validator_count,
       "Validators per group",
   }};
   bool shuffle = false;
@@ -422,9 +422,15 @@ struct SimulationConfig {
     Yaml yaml{YAML::LoadFile(config_path)};
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
-    yaml.at({"groups"}).get(group_count);
-    yaml.at({"group_validators"}).get(validators_per_group);
     yaml.at({"shuffle"}).get(shuffle);
+
+    yaml.at({"roles", "group_count"}).get(roles_config.group_count);
+    yaml.at({"roles", "group_validator_count"})
+        .get(roles_config.group_validator_count);
+    yaml.at({"roles", "global_aggregator_count"})
+        .get(roles_config.global_aggregator_count);
+    yaml.at({"roles", "group_local_aggregator_count"})
+        .get(roles_config.group_local_aggregator_count);
 
     yaml.at({"gossip", "mesh_n"}).get(gossip_config.mesh_n);
     yaml.at({"gossip", "non_mesh_n"}).get(gossip_config.non_mesh_n);
@@ -458,10 +464,15 @@ struct SimulationConfig {
     std::println("Configuration:");
     std::println("  Backend: {}", enum_backend_.str(backend));
     std::println("  Topology: {}", enum_topology_.str(topology));
-    std::println("  Groups: {}", group_count);
-    std::println("  Validators per group: {}", validators_per_group);
+    std::println("  Groups: {}", roles_config.group_count);
+    std::println("  Validators per group: {}",
+                 roles_config.group_validator_count);
+    std::println("  Local aggregators per group: {}",
+                 roles_config.group_local_aggregator_count);
+    std::println("  Global aggregators: {}",
+                 roles_config.global_aggregator_count);
     std::println("  Total validators: {}",
-                 group_count * validators_per_group + 1);
+                 roles_config.group_count * roles_config.group_validator_count);
     if (beamsim::mpiSize() > 1) {
       std::println("  MPI: {}", beamsim::mpiSize());
     } else {
