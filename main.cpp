@@ -16,6 +16,7 @@
 
 namespace beamsim::example {
   std::string report_lines;
+  bool report_enable = false;
 
   struct Json {
     void write(const std::integral auto &v) {
@@ -56,6 +57,9 @@ namespace beamsim::example {
 
   template <typename... A>
   void report(const ISimulator &simulator, const A &...a) {
+    if (not report_enable) {
+      return;
+    }
     Json json;
     json.writeTuple("report", ms(simulator.time()), a...);
     report_lines += json.json;
@@ -497,6 +501,9 @@ void run_simulation(const SimulationConfig &config) {
   routers.computeRoutes();
   beamsim::example::Metrics metrics{roles};
 
+  beamsim::example::report_enable = config.report;
+  auto *metrics_ptr = config.report ? &metrics : nullptr;
+
   auto run = [&](auto &simulator) {
     beamsim::Stopwatch t_run;
     beamsim::example::SharedState shared_state{roles};
@@ -573,7 +580,7 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::DELAY: {
       if (beamsim::mpiIsMain()) {
         beamsim::DelayNetwork delay_network{routers};
-        beamsim::Simulator simulator{delay_network, &metrics};
+        beamsim::Simulator simulator{delay_network, metrics_ptr};
         run(simulator);
       }
       break;
@@ -581,7 +588,7 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::QUEUE: {
       if (beamsim::mpiIsMain()) {
         beamsim::QueueNetwork queue_network{routers};
-        beamsim::Simulator simulator{queue_network, &metrics};
+        beamsim::Simulator simulator{queue_network, metrics_ptr};
         run(simulator);
       }
       break;
@@ -589,7 +596,7 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::NS3:
     case SimulationConfig::Backend::NS3_DIRECT: {
 #ifdef ns3_FOUND
-      beamsim::ns3_::Simulator simulator{&metrics};
+      beamsim::ns3_::Simulator simulator{metrics_ptr};
       if (config.backend == SimulationConfig::Backend::NS3) {
         simulator.routing_.initRouters(routers);
       } else {

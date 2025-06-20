@@ -384,8 +384,22 @@ struct SimulationConfig {
   }};
   bool shuffle = false;
   Args::FlagBool flag_shuffle{{{"--shuffle"}, shuffle, ""}};
+  bool report = false;
+  Args::FlagBool flag_report{
+      {{"--report"}, report, "Print report data for plots"}};
   bool help = false;
   Args::FlagBool flag_help{{{"-h", "--help"}, help, "Show this help message"}};
+
+  auto flags(auto &&f) {
+    return f(flag_config_path,
+             flag_backend,
+             flag_topology,
+             flag_group_count,
+             flag_validators_per_group,
+             flag_shuffle,
+             flag_report,
+             flag_help);
+  }
 
   beamsim::gossip::Config gossip_config;
 
@@ -393,23 +407,11 @@ struct SimulationConfig {
     SimulationConfig config;
     std::println("Usage: {} [options]", program_name);
     std::println("Options:");
-    Args::help(config.flag_config_path,
-               config.flag_backend,
-               config.flag_topology,
-               config.flag_group_count,
-               config.flag_validators_per_group,
-               config.flag_shuffle,
-               config.flag_help);
+    config.flags([&](auto &&...a) { Args::help(a...); });
   }
 
   bool parse_args(int argc, char **argv) {
-    if (not Args{argc, argv}.parse(flag_config_path,
-                                   flag_backend,
-                                   flag_topology,
-                                   flag_group_count,
-                                   flag_validators_per_group,
-                                   flag_shuffle,
-                                   flag_help)) {
+    if (not flags([&](auto &&...a) { return Args{argc, argv}.parse(a...); })) {
       return false;
     }
     if (not config_path.empty()) {

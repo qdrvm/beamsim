@@ -79,6 +79,7 @@ def run(b="ns3", t="direct", g=10, gv=10, shuffle=False, mpi=False):
             "-gv",
             str(gv),
             *(["--shuffle"] if shuffle else []),
+            "--report",
         ]
         print(f"run: {' '.join(cmd)}")
         output = subprocess.check_output(cmd, text=True)
