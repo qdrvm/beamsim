@@ -48,6 +48,18 @@ class Metrics:
         self.bytes_sent_role_avg = [a / n for a, n in zip(self.bytes_sent_role, roles)]
 
 
+topology_name = {
+    "direct": "Direct",
+    "gossip": "Gossip",
+    "grid": "Grid",
+}
+topologies = list(topology_name.keys())
+role_name = [
+    "Validator",
+    "Local Aggregator",
+    "Global Aggregator",
+]
+
 exe = "build/main"
 
 run_cache = dict()
