@@ -2,6 +2,7 @@
 
 #include <ns3/applications-module.h>
 #include <ns3/core-module.h>
+#include <ns3/internet-module.h>
 #include <ns3/mpi-interface.h>
 #include <ns3/network-module.h>
 
@@ -15,6 +16,11 @@ namespace beamsim::ns3_ {
   using BytesOut = std::span<uint8_t>;
 
   constexpr uint16_t kPort = 10000;
+
+  enum class Protocol {
+    TCP,
+    UDP,
+  };
 
   inline ns3::Time timeToNs3(Time time) {
     static_assert(std::is_same_v<Time, std::chrono::microseconds>);
@@ -178,22 +184,9 @@ namespace beamsim::ns3_ {
       peer_->onStart();
     }
 
-    SocketPtr makeSocket() {
-      auto socket = ns3::Socket::CreateSocket(
-          GetNode(), ns3::TypeId::LookupByName("ns3::TcpSocketFactory"));
-      return socket;
-    }
-    void listen() {
-      tcp_listener_ = makeSocket();
-      tcp_listener_->Bind(ns3::InetSocketAddress{
-          ns3::Ipv4Address::GetAny(),
-          kPort,
-      });
-      tcp_listener_->Listen();
-      tcp_listener_->SetAcceptCallback(
-          ns3::MakeNullCallback<bool, SocketPtr, const ns3::Address &>(),
-          ns3::MakeCallback(&Application::onAccept, this));
-    }
+    SocketPtr makeSocket();
+    void listen();
+    void onUdpReceive(SocketPtr socket);
     void onAccept(SocketPtr socket, const ns3::Address &address);
     void add(PeerIndex peer_index, SocketPtr socket) {
       socket->SetRecvCallback(MakeCallback(&Application::pollRead, this));
@@ -221,23 +214,21 @@ namespace beamsim::ns3_ {
     void connect(PeerIndex peer_index);
     void send(PeerIndex peer_index,
               std::optional<MessageId> message_id,
-              const IMessage &message) {
-      assert2(peer_index != peer_->peer_index_);
-      auto &sockets = tcp_sockets_[peer_index];
-      auto connected = sockets.write() != nullptr;
-      if (not connected) {
-        connect(peer_index);
-      }
-      auto &socket = sockets.write();
-      auto &state = tcp_socket_state_.at(socket);
-      state.writing.write(message_id, message);
-      if (connected) {
-        pollWrite(socket);
-      }
-    }
+              const IMessage &message);
 
+   private:
+    void sendTcp(PeerIndex peer_index,
+                 std::optional<MessageId> message_id,
+                 const IMessage &message);
+
+    void sendUdp(PeerIndex peer_index,
+                 std::optional<MessageId> message_id,
+                 const IMessage &message);
+
+   public:
     Simulator &simulator_;
     std::unique_ptr<IPeer> peer_;
+   private:
     SocketPtr tcp_listener_;
     std::unordered_map<PeerIndex, SocketInOut> tcp_sockets_;
     std::unordered_map<SocketPtr, SocketState> tcp_socket_state_;
@@ -250,6 +241,10 @@ namespace beamsim::ns3_ {
       if (mpiSize() > 0) {
         ns3::MpiInterface::Enable(MPI_COMM_WORLD);
       }
+    }
+
+    void setProtocol(Protocol protocol) {
+      protocol_ = protocol;
     }
 
     // ISimulator
@@ -367,6 +362,7 @@ namespace beamsim::ns3_ {
     }
 
     IMetrics *metrics_;
+    Protocol protocol_ = Protocol::TCP;
     bool cache_messages_ = true;
     std::vector<ns3::Ptr<Application>> applications_;
     Routing routing_;
@@ -374,6 +370,105 @@ namespace beamsim::ns3_ {
     std::unordered_map<MessageId, MessagePtr> messages_;
     MessageDecodeFn message_decode_;
   };
+
+  // Application method implementations
+  inline SocketPtr Application::makeSocket() {
+    const char* socketFactory = simulator_.protocol_ == Protocol::UDP ? 
+                                 "ns3::UdpSocketFactory" : "ns3::TcpSocketFactory";
+    auto socket = ns3::Socket::CreateSocket(
+        GetNode(), ns3::TypeId::LookupByName(socketFactory));
+    return socket;
+  }
+
+  inline void Application::listen() {
+    if (simulator_.protocol_ == Protocol::UDP) {
+      tcp_listener_ = makeSocket();
+      tcp_listener_->Bind(ns3::InetSocketAddress{
+          ns3::Ipv4Address::GetAny(),
+          kPort,
+      });
+      tcp_listener_->SetRecvCallback(ns3::MakeCallback(&Application::onUdpReceive, this));
+    } else {
+      tcp_listener_ = makeSocket();
+      tcp_listener_->Bind(ns3::InetSocketAddress{
+          ns3::Ipv4Address::GetAny(),
+          kPort,
+      });
+      tcp_listener_->Listen();
+      tcp_listener_->SetAcceptCallback(
+          ns3::MakeNullCallback<bool, SocketPtr, const ns3::Address &>(),
+          ns3::MakeCallback(&Application::onAccept, this));
+    }
+  }
+
+  inline void Application::send(PeerIndex peer_index,
+                                std::optional<MessageId> message_id,
+                                const IMessage &message) {
+    assert2(peer_index != peer_->peer_index_);
+    
+    if (simulator_.protocol_ == Protocol::UDP) {
+      sendUdp(peer_index, message_id, message);
+    } else {
+      sendTcp(peer_index, message_id, message);
+    }
+  }
+
+  inline void Application::sendTcp(PeerIndex peer_index,
+                                   std::optional<MessageId> message_id,
+                                   const IMessage &message) {
+    auto &sockets = tcp_sockets_[peer_index];
+    auto connected = sockets.write() != nullptr;
+    if (not connected) {
+      connect(peer_index);
+    }
+    auto &socket = sockets.write();
+    auto &state = tcp_socket_state_.at(socket);
+    state.writing.write(message_id, message);
+    if (connected) {
+      pollWrite(socket);
+    }
+  }
+
+  inline void Application::sendUdp(PeerIndex peer_index,
+                                   std::optional<MessageId> message_id,
+                                   const IMessage &message) {
+    // For UDP, create a simple packet with the serialized message
+    Bytes data;
+    MessageEncodeTo encode_data{[&data](BytesIn part) { 
+      data.insert(data.end(), part.begin(), part.end()); 
+    }};
+    message.encode(encode_data);
+    
+    auto packet = ns3::Create<ns3::Packet>(data.data(), data.size());
+    
+    // Send directly to the peer
+    auto socket = makeSocket();
+    socket->Connect(ns3::InetSocketAddress{
+        simulator_.routing_.peer_ips_.at(peer_index), kPort});
+    socket->Send(packet);
+    socket->Close();
+  }
+
+  inline void Application::connect(PeerIndex peer_index) {
+    if (simulator_.protocol_ == Protocol::UDP) {
+      return; // UDP is connectionless, no need to connect
+    }
+    
+    auto &sockets = tcp_sockets_[peer_index];
+    assert2(not sockets.out);
+    if (sockets.write()) {
+      return;
+    }
+    auto socket = makeSocket();
+    socket->Connect(ns3::InetSocketAddress{
+        simulator_.routing_.peer_ips_.at(peer_index), kPort});
+    sockets.out = socket;
+    sockets.write_out = true;
+    socket->SetConnectCallback(
+        MakeCallback(&Application::onConnect, this),
+        MakeCallback(&Application::onConnectError, this));
+    add(peer_index, socket);
+  }
 
   void Application::onAccept(SocketPtr socket, const ns3::Address &address) {
     auto index = simulator_.routing_.ip_peer_index_.at(
@@ -383,6 +478,36 @@ namespace beamsim::ns3_ {
     sockets.in = socket;
     sockets.write_out = (bool)sockets.out;
     add(index, socket);
+  }
+
+  void Application::onUdpReceive(SocketPtr socket) {
+    ns3::Address from_address;
+    auto packet = socket->RecvFrom(from_address);
+    if (!packet) {
+      return;
+    }
+
+    auto from_ip = ns3::InetSocketAddress::ConvertFrom(from_address).GetIpv4();
+    auto it = simulator_.routing_.ip_peer_index_.find(from_ip);
+    if (it == simulator_.routing_.ip_peer_index_.end()) {
+      return; // Unknown sender
+    }
+    auto from_peer = it->second;
+
+    // Extract message data
+    auto size = packet->GetSize();
+    Bytes data(size);
+    packet->CopyData(data.data(), size);
+
+    // Decode message
+    MessageDecodeFrom decode_data{data};
+    auto message = simulator_.message_decode_(decode_data);
+
+    if (simulator_.metrics_ != nullptr) {
+      simulator_.metrics_->onPeerReceivedMessage(peer_->peer_index_);
+    }
+
+    peer_->onMessage(from_peer, std::move(message));
   }
 
   void Application::pollRead(SocketPtr socket) {
@@ -446,22 +571,5 @@ namespace beamsim::ns3_ {
             header.message_size.value() - header.data_size.value());
       }
     }
-  }
-
-  void Application::connect(PeerIndex peer_index) {
-    auto &sockets = tcp_sockets_[peer_index];
-    assert2(not sockets.out);
-    if (sockets.write()) {
-      return;
-    }
-    auto socket = makeSocket();
-    socket->Connect(ns3::InetSocketAddress{
-        simulator_.routing_.peer_ips_.at(peer_index), kPort});
-    sockets.out = socket;
-    sockets.write_out = true;
-    socket->SetConnectCallback(
-        MakeCallback(&Application::onConnect, this),
-        MakeCallback(&Application::onConnectError, this));
-    add(peer_index, socket);
   }
 }  // namespace beamsim::ns3_

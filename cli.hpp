@@ -337,6 +337,10 @@ struct SimulationConfig {
     GOSSIP,
     GRID,
   };
+  enum class Protocol {
+    TCP,
+    UDP,
+  };
 
   const Args::Enum<Backend> enum_backend_{{
       {Backend::DELAY, "delay"},
@@ -348,6 +352,10 @@ struct SimulationConfig {
       {Topology::DIRECT, "direct"},
       {Topology::GOSSIP, "gossip"},
       {Topology::GRID, "grid"},
+  }};
+  const Args::Enum<Protocol> enum_protocol_{{
+      {Protocol::TCP, "tcp"},
+      {Protocol::UDP, "udp"},
   }};
 
   beamsim::example::RolesConfig roles_config;
@@ -372,6 +380,13 @@ struct SimulationConfig {
       "Communication topology",
       enum_topology_,
   };
+  Protocol protocol = Protocol::TCP;
+  Args::FlagEnum<decltype(protocol)> flag_protocol{
+      {"-p", "--protocol"},
+      protocol,
+      "Network protocol (TCP/UDP)",
+      enum_protocol_,
+  };
   Args::FlagInt<beamsim::example::GroupIndex> flag_group_count{{
       {"-g", "--groups"},
       roles_config.group_count,
@@ -394,6 +409,7 @@ struct SimulationConfig {
     return f(flag_config_path,
              flag_backend,
              flag_topology,
+             flag_protocol,
              flag_group_count,
              flag_validators_per_group,
              flag_shuffle,
@@ -424,6 +440,7 @@ struct SimulationConfig {
     Yaml yaml{YAML::LoadFile(config_path)};
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
+    yaml.at({"protocol"}).get(protocol, enum_protocol_);
     yaml.at({"shuffle"}).get(shuffle);
 
     yaml.at({"roles", "group_count"}).get(roles_config.group_count);
@@ -466,6 +483,7 @@ struct SimulationConfig {
     std::println("Configuration:");
     std::println("  Backend: {}", enum_backend_.str(backend));
     std::println("  Topology: {}", enum_topology_.str(topology));
+    std::println("  Protocol: {}", enum_protocol_.str(protocol));
     std::println("  Groups: {}", roles_config.group_count);
     std::println("  Validators per group: {}",
                  roles_config.group_validator_count);
