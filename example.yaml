@@ -1,0 +1,18 @@
+backend: ns3
+topology: direct
+
+roles:
+  group_count: 4
+  group_validator_count: 4
+  global_aggregator_count: 1
+  group_local_aggregator_count: 1
+
+gossip:
+  mesh_n: 4
+  non_mesh_n: 4
+
+consts:
+  signature_time: 20ms
+  signature_size: 1536
+  snark_time: 200ms
+  snark_size: 131072
