@@ -5,6 +5,7 @@
 #include <beamsim/example/roles.hpp>
 #include <beamsim/gossip/config.hpp>
 #include <beamsim/ns3/mpi.hpp>
+#include <beamsim/ns3/protocol.hpp>
 #include <charconv>
 #include <print>
 
@@ -337,10 +338,6 @@ struct SimulationConfig {
     GOSSIP,
     GRID,
   };
-  enum class Protocol {
-    TCP,
-    UDP,
-  };
 
   const Args::Enum<Backend> enum_backend_{{
       {Backend::DELAY, "delay"},
@@ -353,9 +350,9 @@ struct SimulationConfig {
       {Topology::GOSSIP, "gossip"},
       {Topology::GRID, "grid"},
   }};
-  const Args::Enum<Protocol> enum_protocol_{{
-      {Protocol::TCP, "tcp"},
-      {Protocol::UDP, "udp"},
+  const Args::Enum<beamsim::ns3_::Protocol> enum_protocol_{{
+      {beamsim::ns3_::Protocol::TCP, "tcp"},
+      {beamsim::ns3_::Protocol::UDP, "udp"},
   }};
 
   beamsim::example::RolesConfig roles_config;
@@ -380,7 +377,7 @@ struct SimulationConfig {
       "Communication topology",
       enum_topology_,
   };
-  Protocol protocol = Protocol::TCP;
+  beamsim::ns3_::Protocol protocol = beamsim::ns3_::Protocol::TCP;
   Args::FlagEnum<decltype(protocol)> flag_protocol{
       {"-p", "--protocol"},
       protocol,

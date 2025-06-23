@@ -7,6 +7,7 @@
 #include <ns3/network-module.h>
 
 #include <beamsim/i_simulator.hpp>
+#include <beamsim/ns3/protocol.hpp>
 #include <beamsim/ns3/routing.hpp>
 #include <unordered_map>
 
@@ -16,11 +17,6 @@ namespace beamsim::ns3_ {
   using BytesOut = std::span<uint8_t>;
 
   constexpr uint16_t kPort = 10000;
-
-  enum class Protocol {
-    TCP,
-    UDP,
-  };
 
   inline ns3::Time timeToNs3(Time time) {
     static_assert(std::is_same_v<Time, std::chrono::microseconds>);
