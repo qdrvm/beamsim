@@ -369,7 +369,7 @@ namespace beamsim::ns3_ {
   };
 
   // Application method implementations
-  inline SocketPtr Application::makeSocket() {
+  SocketPtr Application::makeSocket() {
     const char *socketFactory = simulator_.protocol_ == Protocol::UDP
                                   ? "ns3::UdpSocketFactory"
                                   : "ns3::TcpSocketFactory";
@@ -378,7 +378,7 @@ namespace beamsim::ns3_ {
     return socket;
   }
 
-  inline void Application::listen() {
+  void Application::listen() {
     if (simulator_.protocol_ == Protocol::UDP) {
       tcp_listener_ = makeSocket();
       tcp_listener_->Bind(ns3::InetSocketAddress{
@@ -400,9 +400,9 @@ namespace beamsim::ns3_ {
     }
   }
 
-  inline void Application::send(PeerIndex peer_index,
-                                std::optional<MessageId> message_id,
-                                const IMessage &message) {
+  void Application::send(PeerIndex peer_index,
+                         std::optional<MessageId> message_id,
+                         const IMessage &message) {
     assert2(peer_index != peer_->peer_index_);
 
     if (simulator_.protocol_ == Protocol::UDP) {
@@ -412,9 +412,9 @@ namespace beamsim::ns3_ {
     }
   }
 
-  inline void Application::sendTcp(PeerIndex peer_index,
-                                   std::optional<MessageId> message_id,
-                                   const IMessage &message) {
+  void Application::sendTcp(PeerIndex peer_index,
+                            std::optional<MessageId> message_id,
+                            const IMessage &message) {
     auto &sockets = tcp_sockets_[peer_index];
     auto connected = sockets.write() != nullptr;
     if (not connected) {
@@ -428,9 +428,9 @@ namespace beamsim::ns3_ {
     }
   }
 
-  inline void Application::sendUdp(PeerIndex peer_index,
-                                   std::optional<MessageId> message_id,
-                                   const IMessage &message) {
+  void Application::sendUdp(PeerIndex peer_index,
+                            std::optional<MessageId> message_id,
+                            const IMessage &message) {
     // For UDP, create a simple packet with the serialized message
     Bytes data;
     MessageEncodeTo encode_data{[&data](BytesIn part) {
@@ -448,7 +448,7 @@ namespace beamsim::ns3_ {
     socket->Close();
   }
 
-  inline void Application::connect(PeerIndex peer_index) {
+  void Application::connect(PeerIndex peer_index) {
     if (simulator_.protocol_ == Protocol::UDP) {
       return;  // UDP is connectionless, no need to connect
     }
