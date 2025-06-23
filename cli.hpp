@@ -445,6 +445,8 @@ struct SimulationConfig {
     yaml.at({"consts", "signature_size"}).get(consts.signature_size);
     yaml.at({"consts", "snark_time"}).get(consts.snark_time);
     yaml.at({"consts", "snark_size"}).get(consts.snark_size);
+    yaml.at({"consts", "snark1_threshold"}).get(consts.snark1_threshold);
+    yaml.at({"consts", "snark2_threshold"}).get(consts.snark2_threshold);
 
     yaml.checkUnknown();
   }
@@ -460,6 +462,12 @@ struct SimulationConfig {
       exit(EXIT_FAILURE);
     }
 #endif
+    auto &consts = beamsim::consts();
+    if (consts.snark1_threshold < consts.snark2_threshold) {
+      // TODO: repeat snark1 aggregation with more signatures
+      std::println(
+          "Warning: snark1 threshold shouldn't be less than snark2 threshold");
+    }
   }
 
   void print_config() {

@@ -9,6 +9,8 @@ namespace beamsim {
     MessageSize signature_size = 1536;
     Time snark_time = std::chrono::milliseconds{200};
     MessageSize snark_size = 131072;
+    double snark1_threshold = 1;
+    double snark2_threshold = 2.0 / 3;
   };
 
   inline Consts &consts() {

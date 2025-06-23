@@ -161,7 +161,7 @@ namespace beamsim::example {
     bool done = false;
 
     PeerIndex snark2_threshold() const {
-      return roles.validator_count * 2 / 3 + 1;
+      return roles.validator_count * consts().snark2_threshold;
     }
   };
 
@@ -197,7 +197,8 @@ namespace beamsim::example {
         return;
       }
       aggregating_snark1->peer_indices.set(message.peer_index);
-      PeerIndex threshold = group_.validators.size();
+      PeerIndex threshold =
+          group_.validators.size() * consts().snark1_threshold;
       if (aggregating_snark1->peer_indices.ones() < threshold) {
         return;
       }
