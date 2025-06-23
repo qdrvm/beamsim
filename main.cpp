@@ -199,13 +199,15 @@ namespace beamsim::example {
       aggregating_snark1->peer_indices.set(message.peer_index);
       PeerIndex threshold =
           group_.validators.size() * consts().snark1_threshold;
-      if (aggregating_snark1->peer_indices.ones() < threshold) {
+      auto received = aggregating_snark1->peer_indices.ones();
+      if (received < threshold) {
         return;
       }
       auto snark1 = std::move(aggregating_snark1.value());
       aggregating_snark1.reset();
       simulator_.runAfter(
-          consts().snark_time, [this, snark1{std::move(snark1)}]() mutable {
+          timeSeconds(received / consts().aggregation_rate_per_sec),
+          [this, snark1{std::move(snark1)}]() mutable {
             report(simulator_, "snark1_sent", snark1.peer_indices.ones());
             onMessageSnark1(snark1);
             sendSnark1(std::move(snark1));
@@ -215,27 +217,30 @@ namespace beamsim::example {
       if (not aggregating_snark2.has_value()) {
         return;
       }
+      ++snark1_received;
       aggregating_snark2->peer_indices.set(message.peer_indices);
       report(simulator_,
              "snark1_received",
              aggregating_snark2->peer_indices.ones());
-      if (aggregating_snark2->peer_indices.ones()
-          < shared_state_.snark2_threshold()) {
+      auto received = aggregating_snark2->peer_indices.ones();
+      if (received < shared_state_.snark2_threshold()) {
         return;
       }
       auto snark2 = std::move(aggregating_snark2.value());
       aggregating_snark2.reset();
-      simulator_.runAfter(consts().snark_time,
-                          [this, snark2{std::move(snark2)}]() mutable {
-                            report(simulator_, "snark2_sent");
-                            if (kStopOnCreateSnark2) {
-                              shared_state_.done = true;
-                              simulator_.stop();
-                              return;
-                            }
-                            onMessageSnark2(snark2);
-                            sendSnark2(std::move(snark2));
-                          });
+      simulator_.runAfter(
+          timeSeconds(snark1_received
+                      / consts().snark_recursion_aggregation_rate_per_sec),
+          [this, snark2{std::move(snark2)}]() mutable {
+            report(simulator_, "snark2_sent");
+            if (kStopOnCreateSnark2) {
+              shared_state_.done = true;
+              simulator_.stop();
+              return;
+            }
+            onMessageSnark2(snark2);
+            sendSnark2(std::move(snark2));
+          });
     }
     void onMessageSnark2(const MessageSnark2 &) {
       if (snark2_received) {
@@ -263,6 +268,8 @@ namespace beamsim::example {
     const Roles::Group &group_;
     bool snark2_received = false;
     std::optional<MessageSnark1> aggregating_snark1;
+    // TODO: remove when aggregating multiple times
+    size_t snark1_received = 0;
     std::optional<MessageSnark2> aggregating_snark2;
   };
 

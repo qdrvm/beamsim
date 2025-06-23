@@ -443,10 +443,13 @@ struct SimulationConfig {
     auto &consts = beamsim::consts();
     yaml.at({"consts", "signature_time"}).get(consts.signature_time);
     yaml.at({"consts", "signature_size"}).get(consts.signature_size);
-    yaml.at({"consts", "snark_time"}).get(consts.snark_time);
     yaml.at({"consts", "snark_size"}).get(consts.snark_size);
     yaml.at({"consts", "snark1_threshold"}).get(consts.snark1_threshold);
     yaml.at({"consts", "snark2_threshold"}).get(consts.snark2_threshold);
+    yaml.at({"consts", "aggregation_rate_per_sec"})
+        .get(consts.aggregation_rate_per_sec);
+    yaml.at({"consts", "snark_recursion_aggregation_rate_per_sec"})
+        .get(consts.snark_recursion_aggregation_rate_per_sec);
 
     yaml.checkUnknown();
   }
