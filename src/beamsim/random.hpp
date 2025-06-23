@@ -10,6 +10,8 @@ namespace beamsim {
   // TODO: MPI compatible random
   class Random {
    public:
+    Random(uint32_t seed) : engine_{seed} {}
+
     template <typename T>
     T random(T min, T max) {
       return std::uniform_int_distribution{min, max}(engine_);

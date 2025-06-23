@@ -495,7 +495,7 @@ namespace beamsim::example {
 }  // namespace beamsim::example
 
 void run_simulation(const SimulationConfig &config) {
-  beamsim::Random random;
+  beamsim::Random random{config.random_seed};
   auto roles = beamsim::example::Roles::make(config.roles_config);
   auto routers = beamsim::Routers::make(random, roles, config.shuffle);
   routers.computeRoutes();

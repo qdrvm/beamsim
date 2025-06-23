@@ -384,6 +384,7 @@ struct SimulationConfig {
   }};
   bool shuffle = false;
   Args::FlagBool flag_shuffle{{{"--shuffle"}, shuffle, ""}};
+  uint32_t random_seed = 0;
   bool report = false;
   Args::FlagBool flag_report{
       {{"--report"}, report, "Print report data for plots"}};
@@ -425,6 +426,8 @@ struct SimulationConfig {
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
     yaml.at({"shuffle"}).get(shuffle);
+
+    yaml.at({"random_seed"}).get(random_seed);
 
     yaml.at({"roles", "group_count"}).get(roles_config.group_count);
     yaml.at({"roles", "group_validator_count"})
@@ -480,6 +483,7 @@ struct SimulationConfig {
     } else {
       std::println("  MPI: no");
     }
+    std::println("  Random seed: {}", random_seed);
     std::println();
   }
 };
