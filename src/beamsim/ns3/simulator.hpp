@@ -224,6 +224,7 @@ namespace beamsim::ns3_ {
    public:
     Simulator &simulator_;
     std::unique_ptr<IPeer> peer_;
+
    private:
     SocketPtr tcp_listener_;
     std::unordered_map<PeerIndex, SocketInOut> tcp_sockets_;
@@ -369,8 +370,9 @@ namespace beamsim::ns3_ {
 
   // Application method implementations
   inline SocketPtr Application::makeSocket() {
-    const char* socketFactory = simulator_.protocol_ == Protocol::UDP ? 
-                                 "ns3::UdpSocketFactory" : "ns3::TcpSocketFactory";
+    const char *socketFactory = simulator_.protocol_ == Protocol::UDP
+                                  ? "ns3::UdpSocketFactory"
+                                  : "ns3::TcpSocketFactory";
     auto socket = ns3::Socket::CreateSocket(
         GetNode(), ns3::TypeId::LookupByName(socketFactory));
     return socket;
@@ -383,7 +385,8 @@ namespace beamsim::ns3_ {
           ns3::Ipv4Address::GetAny(),
           kPort,
       });
-      tcp_listener_->SetRecvCallback(ns3::MakeCallback(&Application::onUdpReceive, this));
+      tcp_listener_->SetRecvCallback(
+          ns3::MakeCallback(&Application::onUdpReceive, this));
     } else {
       tcp_listener_ = makeSocket();
       tcp_listener_->Bind(ns3::InetSocketAddress{
@@ -401,7 +404,7 @@ namespace beamsim::ns3_ {
                                 std::optional<MessageId> message_id,
                                 const IMessage &message) {
     assert2(peer_index != peer_->peer_index_);
-    
+
     if (simulator_.protocol_ == Protocol::UDP) {
       sendUdp(peer_index, message_id, message);
     } else {
@@ -430,13 +433,13 @@ namespace beamsim::ns3_ {
                                    const IMessage &message) {
     // For UDP, create a simple packet with the serialized message
     Bytes data;
-    MessageEncodeTo encode_data{[&data](BytesIn part) { 
-      data.insert(data.end(), part.begin(), part.end()); 
+    MessageEncodeTo encode_data{[&data](BytesIn part) {
+      data.insert(data.end(), part.begin(), part.end());
     }};
     message.encode(encode_data);
-    
+
     auto packet = ns3::Create<ns3::Packet>(data.data(), data.size());
-    
+
     // Send directly to the peer
     auto socket = makeSocket();
     socket->Connect(ns3::InetSocketAddress{
@@ -447,9 +450,9 @@ namespace beamsim::ns3_ {
 
   inline void Application::connect(PeerIndex peer_index) {
     if (simulator_.protocol_ == Protocol::UDP) {
-      return; // UDP is connectionless, no need to connect
+      return;  // UDP is connectionless, no need to connect
     }
-    
+
     auto &sockets = tcp_sockets_[peer_index];
     assert2(not sockets.out);
     if (sockets.write()) {
@@ -486,7 +489,7 @@ namespace beamsim::ns3_ {
     auto from_ip = ns3::InetSocketAddress::ConvertFrom(from_address).GetIpv4();
     auto it = simulator_.routing_.ip_peer_index_.find(from_ip);
     if (it == simulator_.routing_.ip_peer_index_.end()) {
-      return; // Unknown sender
+      return;  // Unknown sender
     }
     auto from_peer = it->second;
 
