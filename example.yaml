@@ -1,4 +1,4 @@
-backend: ns3
+backend: ns3-direct
 topology: direct
 shuffle: false
 
@@ -24,3 +24,12 @@ consts:
   snark_recursion_aggregation_rate_per_sec: 100
   pq_signature_verification_time: 50ms
   snark_proof_verification_time: 50ms
+
+network:
+  direct:
+    bitrate:
+      min: 10000000
+      max: 100000000
+    delay:
+      min: 10ms
+      max: 100ms

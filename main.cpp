@@ -548,8 +548,13 @@ namespace beamsim::example {
 void run_simulation(const SimulationConfig &config) {
   beamsim::Random random{config.random_seed};
   auto roles = beamsim::example::Roles::make(config.roles_config);
-  auto routers = beamsim::Routers::make(random, roles, config.shuffle);
-  routers.computeRoutes();
+  beamsim::Routers routers;
+  if (config.direct_router) {
+    routers = beamsim::Routers::make(random, roles, *config.direct_router);
+  } else {
+    routers = beamsim::Routers::make(random, roles, config.shuffle);
+    routers.computeRoutes();
+  }
   beamsim::example::Metrics metrics{roles};
 
   beamsim::example::report_enable = config.report;

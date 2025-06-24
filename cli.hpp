@@ -226,6 +226,17 @@ struct Yaml {
   };
 
   struct Value {
+    operator bool() const {
+      return node.IsDefined();
+    }
+
+    Value &required() {
+      if (not node.IsDefined()) {
+        error();
+      }
+      return *this;
+    }
+
     template <typename T>
     void get(T &value, const Args::Enum<T> &enum_) const {
       if (not node.IsDefined()) {
@@ -265,24 +276,32 @@ struct Yaml {
       value = node.as<T>();
     }
 
-    void error() const {
+    [[noreturn]] void error() const {
       throw YAML::BadConversion{node.Mark()};
     }
 
+    Value at(Path path) const {
+      auto new_path = path;
+      std::optional<const YAML::Node> node = this->node;
+      auto *known = this->known;
+      auto value = *this;
+      for (auto &key : path) {
+        new_path.emplace_back(key);
+        if (node.value().IsDefined()) {
+          node.emplace(node.value()[key]);
+        }
+        known = &known->children[key];
+      }
+      return Value{path, node.value(), known};
+    }
+
     Path path;
-    YAML::Node node;
+    const YAML::Node node;
+    KnownPaths *known;
   };
 
   Value at(Path path) {
-    std::optional<const YAML::Node> node = root;
-    auto *known = &known_paths;
-    for (auto &key : path) {
-      if (node->IsDefined()) {
-        node.emplace(node.value()[key]);
-      }
-      known = &known->children[key];
-    }
-    return Value{path, node.value()};
+    return Value{{}, root, &known_paths}.at(path);
   }
 
   static void checkUnknown(Path &path,
@@ -320,7 +339,7 @@ struct Yaml {
     checkUnknown(path, root, known_paths);
   }
 
-  YAML::Node root;
+  const YAML::Node root;
   KnownPaths known_paths{};
 };
 
@@ -394,6 +413,7 @@ struct SimulationConfig {
       local_aggregation_only,
       "stop simulation after local aggregator generates snark1",
   }};
+  std::optional<beamsim::DirectRouterConfig> direct_router;
   uint32_t random_seed = 0;
   bool report = false;
   Args::FlagBool flag_report{
@@ -477,6 +497,16 @@ struct SimulationConfig {
         .get(consts.pq_signature_verification_time);
     yaml.at({"consts", "snark_proof_verification_time"})
         .get(consts.snark_proof_verification_time);
+
+    if (auto direct = yaml.at({"network", "direct"})) {
+      auto range = [&](std::string name, auto &range) {
+        direct.at({name, "min"}).required().get(range.first);
+        direct.at({name, "max"}).required().get(range.second);
+      };
+      auto &config = direct_router.emplace();
+      range("bitrate", config.bitrate);
+      range("delay", config.delay);
+    }
 
     yaml.checkUnknown();
   }

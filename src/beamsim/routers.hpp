@@ -6,6 +6,18 @@
 #include <deque>
 
 namespace beamsim {
+  struct DirectRouterConfig {
+    std::pair<uint64_t, uint64_t> bitrate;
+    std::pair<Time, Time> delay;
+
+    WireProps make(Random &random) const {
+      return WireProps{
+          random.random(bitrate.first, bitrate.second),
+          static_cast<uint32_t>(ms(random.random(delay.first, delay.second))),
+      };
+    }
+  };
+
   struct Routers {
     struct PeerWire {
       PeerIndex router_index;
@@ -102,6 +114,27 @@ namespace beamsim {
                         });
       }
 
+      return routers;
+    }
+
+    static Routers make(Random &random,
+                        const example::Roles &roles,
+                        const DirectRouterConfig &config) {
+      Routers routers;
+      auto n = roles.validator_count;
+      routers.peer_wire_.reserve(n);
+      routers.router_wires_.resize(n);
+      routers.routes_.resize(n);
+      for (PeerIndex i1 = 0; i1 < n; ++i1) {
+        auto &row = routers.routes_.at(i1);
+        row.reserve(n);
+        routers.peer_wire_.emplace_back(i1, WireProps::kZero);
+        for (PeerIndex i2 = 0; i2 < n; ++i2) {
+          auto wire = config.make(random);
+          routers.router_wires_.at(i1).emplace(i2, wire);
+          row.emplace_back(i2, wire);
+        }
+      }
       return routers;
     }
 
