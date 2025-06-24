@@ -471,6 +471,9 @@ namespace beamsim::example {
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
       auto grid_message = std::dynamic_pointer_cast<grid::Message>(any_message);
       auto &message = dynamic_cast<Message &>(*grid_message->message);
+      if (not seen_.emplace(message.hash()).second) {
+        return;
+      }
       if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
         onMessageSignature(*signature, [this, from_peer, grid_message] {
           forward(group_.validators,
@@ -537,6 +540,8 @@ namespace beamsim::example {
             send(peers.at(i), message2);
           });
     }
+
+    std::unordered_set<MessageHash> seen_;
   };
 }  // namespace beamsim::example
 
