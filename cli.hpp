@@ -383,7 +383,17 @@ struct SimulationConfig {
       "Validators per group",
   }};
   bool shuffle = false;
-  Args::FlagBool flag_shuffle{{{"--shuffle"}, shuffle, ""}};
+  Args::FlagBool flag_shuffle{{
+      {"--shuffle"},
+      shuffle,
+      "shuffle validators from same group to different routers",
+  }};
+  bool local_aggregation_only = false;
+  Args::FlagBool flag_local_aggregation_only{{
+      {"--local-aggregation-only"},
+      local_aggregation_only,
+      "stop simulation after local aggregator generates snark1",
+  }};
   uint32_t random_seed = 0;
   bool report = false;
   Args::FlagBool flag_report{
@@ -398,6 +408,7 @@ struct SimulationConfig {
              flag_group_count,
              flag_validators_per_group,
              flag_shuffle,
+             flag_local_aggregation_only,
              flag_report,
              flag_help);
   }
@@ -417,6 +428,10 @@ struct SimulationConfig {
     }
     if (not config_path.empty()) {
       yaml();
+    }
+    if (local_aggregation_only) {
+      roles_config.global_aggregator_count = 1;
+      roles_config.group_count = 1;
     }
     return true;
   }

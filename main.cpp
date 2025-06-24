@@ -157,6 +157,7 @@ namespace beamsim::example {
 
   struct SharedState {
     const Roles &roles;
+    bool stop_on_create_snark1;
     PeerIndex snark2_received = 0;
     bool done = false;
 
@@ -217,6 +218,11 @@ namespace beamsim::example {
           timeSeconds(received / consts().aggregation_rate_per_sec),
           [this, snark1{std::move(snark1)}]() mutable {
             report(simulator_, "snark1_sent", snark1.peer_indices.ones());
+            if (shared_state_.stop_on_create_snark1) {
+              shared_state_.done = true;
+              simulator_.stop();
+              return;
+            }
             _onMessageSnark1(snark1);
             sendSnark1(std::move(snark1));
           });
@@ -546,7 +552,10 @@ void run_simulation(const SimulationConfig &config) {
 
   auto run = [&](auto &simulator) {
     beamsim::Stopwatch t_run;
-    beamsim::example::SharedState shared_state{roles};
+    beamsim::example::SharedState shared_state{
+        .roles = roles,
+        .stop_on_create_snark1 = config.local_aggregation_only,
+    };
 
     beamsim::example::report(simulator,
                              "info",
