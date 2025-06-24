@@ -183,7 +183,7 @@ namespace beamsim::example {
       }
       simulator_.runAfter(consts().signature_time, [this] {
         MessageSignature signature{peer_index_};
-        onMessageSignature(signature);
+        onMessageSignature(signature, [] {});
         sendSignature(std::move(signature));
       });
     }
@@ -192,7 +192,9 @@ namespace beamsim::example {
     virtual void sendSnark1(MessageSnark1 message) = 0;
     virtual void sendSnark2(MessageSnark2 message) = 0;
 
-    void onMessageSignature(const MessageSignature &message) {
+    void onMessageSignature(const MessageSignature &message,
+                            MessageForwardFn forward) {
+      forward();
       if (not aggregating_snark1.has_value()) {
         return;
       }
@@ -209,11 +211,13 @@ namespace beamsim::example {
           timeSeconds(received / consts().aggregation_rate_per_sec),
           [this, snark1{std::move(snark1)}]() mutable {
             report(simulator_, "snark1_sent", snark1.peer_indices.ones());
-            onMessageSnark1(snark1);
+            onMessageSnark1(snark1, [] {});
             sendSnark1(std::move(snark1));
           });
     }
-    void onMessageSnark1(const MessageSnark1 &message) {
+    void onMessageSnark1(const MessageSnark1 &message,
+                         MessageForwardFn forward) {
+      forward();
       if (not aggregating_snark2.has_value()) {
         return;
       }
@@ -238,11 +242,12 @@ namespace beamsim::example {
               simulator_.stop();
               return;
             }
-            onMessageSnark2(snark2);
+            onMessageSnark2(snark2, [] {});
             sendSnark2(std::move(snark2));
           });
     }
-    void onMessageSnark2(const MessageSnark2 &) {
+    void onMessageSnark2(const MessageSnark2 &, MessageForwardFn forward) {
+      forward();
       if (snark2_received) {
         return;
       }
@@ -296,34 +301,37 @@ namespace beamsim::example {
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
       auto &message = dynamic_cast<Message &>(*any_message);
       if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
-        onMessageSignature(*signature);
-        // local aggregator forwards signature from validator to local aggregators
-        if (shared_state_.roles.roles.at(from_peer) != Role::LocalAggregator
-            and role() == Role::LocalAggregator) {
-          for (auto &to_peer : group_.local_aggregators) {
-            if (to_peer == peer_index_) {
-              continue;
+        onMessageSignature(*signature, [this, from_peer, any_message] {
+          // local aggregator forwards signature from validator to local aggregators
+          if (shared_state_.roles.roles.at(from_peer) != Role::LocalAggregator
+              and role() == Role::LocalAggregator) {
+            for (auto &to_peer : group_.local_aggregators) {
+              if (to_peer == peer_index_) {
+                continue;
+              }
+              send(to_peer, any_message);
             }
-            send(to_peer, any_message);
           }
-        }
+        });
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
-        onMessageSnark1(*snark1);
-        // global aggregator forwards snark1 from local aggregator to global aggregators
-        if (shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator
-            and role() == Role::GlobalAggregator) {
-          for (auto &to_peer : shared_state_.roles.global_aggregators) {
-            if (to_peer == peer_index_) {
-              continue;
+        onMessageSnark1(*snark1, [this, from_peer, any_message] {
+          // global aggregator forwards snark1 from local aggregator to global aggregators
+          if (shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator
+              and role() == Role::GlobalAggregator) {
+            for (auto &to_peer : shared_state_.roles.global_aggregators) {
+              if (to_peer == peer_index_) {
+                continue;
+              }
+              send(to_peer, any_message);
             }
-            send(to_peer, any_message);
           }
-        }
+        });
       } else {
         auto &snark2 = std::get<MessageSnark2>(message.variant);
-        onMessageSnark2(snark2);
-        std::println("not implemented: PeerDirect forward snark2");
-        abort();
+        onMessageSnark2(snark2, [] {
+          std::println("not implemented: PeerDirect forward snark2");
+          abort();
+        });
       }
     }
 
@@ -379,17 +387,19 @@ namespace beamsim::example {
     }
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
       gossip_.onMessage(
-          from_peer, any_message, [&](const MessagePtr &any_message) {
+          from_peer,
+          any_message,
+          [&](const MessagePtr &any_message, MessageForwardFn forward) {
             auto &message = dynamic_cast<Message &>(*any_message);
             if (auto *signature =
                     std::get_if<MessageSignature>(&message.variant)) {
-              onMessageSignature(*signature);
+              onMessageSignature(*signature, std::move(forward));
             } else if (auto *snark1 =
                            std::get_if<MessageSnark1>(&message.variant)) {
-              onMessageSnark1(*snark1);
+              onMessageSnark1(*snark1, std::move(forward));
             } else {
               auto &snark2 = std::get<MessageSnark2>(message.variant);
-              onMessageSnark2(snark2);
+              onMessageSnark2(snark2, std::move(forward));
             }
           });
     }
@@ -434,27 +444,30 @@ namespace beamsim::example {
 
     // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
-      auto &grid_message = dynamic_cast<grid::Message &>(*any_message);
-      auto &message = dynamic_cast<Message &>(*grid_message.message);
+      auto grid_message = std::dynamic_pointer_cast<grid::Message>(any_message);
+      auto &message = dynamic_cast<Message &>(*grid_message->message);
       if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
-        forward(group_.validators,
-                group_.index_of_validators,
-                from_peer,
-                grid_message);
-        onMessageSignature(*signature);
+        onMessageSignature(*signature, [this, from_peer, grid_message] {
+          forward(group_.validators,
+                  group_.index_of_validators,
+                  from_peer,
+                  grid_message);
+        });
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
-        forward(shared_state_.roles.aggregators,
-                shared_state_.roles.index_of_aggregators,
-                from_peer,
-                grid_message);
-        onMessageSnark1(*snark1);
+        onMessageSnark1(*snark1, [this, from_peer, grid_message] {
+          forward(shared_state_.roles.aggregators,
+                  shared_state_.roles.index_of_aggregators,
+                  from_peer,
+                  grid_message);
+        });
       } else {
         auto &snark2 = std::get<MessageSnark2>(message.variant);
-        forward(shared_state_.roles.validators,
-                shared_state_.roles.validators,
-                from_peer,
-                grid_message);
-        onMessageSnark2(snark2);
+        onMessageSnark2(snark2, [this, from_peer, grid_message] {
+          forward(shared_state_.roles.validators,
+                  shared_state_.roles.validators,
+                  from_peer,
+                  grid_message);
+        });
       }
     }
 
@@ -487,12 +500,12 @@ namespace beamsim::example {
     void forward(const std::vector<PeerIndex> &peers,
                  auto &index_of,
                  PeerIndex from_peer,
-                 const grid::Message &message) {
-      if (message.ttl <= 1) {
+                 std::shared_ptr<grid::Message> message) {
+      if (message->ttl <= 1) {
         return;
       }
       auto message2 =
-          std::make_shared<grid::Message>(message.message, message.ttl - 1);
+          std::make_shared<grid::Message>(message->message, message->ttl - 1);
       auto peer = index_of.at(peer_index_);
       grid::Grid(peers.size())
           .forwardTo(index_of.at(from_peer), peer, [&](PeerIndex i) {

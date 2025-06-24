@@ -74,8 +74,9 @@ namespace beamsim::gossip {
         }
         dontwant_.emplace(from_peer, message_hash);
         dontwant_.emplace(publish.origin, message_hash);
-        _gossip(publish, message_hash);
-        on_gossip(publish.message);
+        on_gossip(publish.message, [this, publish, message_hash] {
+          _gossip(publish, message_hash);
+        });
       }
       for (auto &message_hash : gossip_message.iwant) {
         auto it = mcache_.find(message_hash);

@@ -17,6 +17,7 @@ namespace beamsim {
   template <size_t N>
   using BytesN = std::array<uint8_t, N>;
   using MessageDecodeFn = std::function<MessagePtr(MessageDecodeFrom &)>;
+  using MessageForwardFn = std::function<void()>;
 
   struct MessageEncodeTo {
     std::function<void(BytesIn)> f;
