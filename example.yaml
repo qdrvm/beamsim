@@ -16,11 +16,11 @@ gossip:
 
 consts:
   signature_time: 20ms
-  signature_size: 1536
+  signature_size: 3072
   snark_size: 131072
-  snark1_threshold: 1
+  snark1_threshold: 0.9
   snark2_threshold: 0.66
-  aggregation_rate_per_sec: 40
-  snark_recursion_aggregation_rate_per_sec: 40
-  pq_signature_verification_time: 1ms
-  snark_proof_verification_time: 10ms
+  aggregation_rate_per_sec: 1000
+  snark_recursion_aggregation_rate_per_sec: 100
+  pq_signature_verification_time: 50ms
+  snark_proof_verification_time: 50ms
