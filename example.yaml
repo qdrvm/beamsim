@@ -1,5 +1,8 @@
 backend: ns3
 topology: direct
+shuffle: false
+
+random_seed: 0
 
 roles:
   group_count: 4
@@ -14,5 +17,10 @@ gossip:
 consts:
   signature_time: 20ms
   signature_size: 1536
-  snark_time: 200ms
   snark_size: 131072
+  snark1_threshold: 1
+  snark2_threshold: 0.66
+  aggregation_rate_per_sec: 40
+  snark_recursion_aggregation_rate_per_sec: 40
+  pq_signature_verification_time: 1ms
+  snark_proof_verification_time: 10ms
