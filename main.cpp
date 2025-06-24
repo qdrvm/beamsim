@@ -183,7 +183,7 @@ namespace beamsim::example {
       }
       simulator_.runAfter(consts().signature_time, [this] {
         MessageSignature signature{peer_index_};
-        onMessageSignature(signature, [] {});
+        _onMessageSignature(signature);
         sendSignature(std::move(signature));
       });
     }
@@ -194,7 +194,13 @@ namespace beamsim::example {
 
     void onMessageSignature(const MessageSignature &message,
                             MessageForwardFn forward) {
-      forward();
+      simulator_.runAfter(consts().pq_signature_verification_time,
+                          [this, message, forward] {
+                            forward();
+                            _onMessageSignature(message);
+                          });
+    }
+    void _onMessageSignature(const MessageSignature &message) {
       if (not aggregating_snark1.has_value()) {
         return;
       }
@@ -211,13 +217,19 @@ namespace beamsim::example {
           timeSeconds(received / consts().aggregation_rate_per_sec),
           [this, snark1{std::move(snark1)}]() mutable {
             report(simulator_, "snark1_sent", snark1.peer_indices.ones());
-            onMessageSnark1(snark1, [] {});
+            _onMessageSnark1(snark1);
             sendSnark1(std::move(snark1));
           });
     }
     void onMessageSnark1(const MessageSnark1 &message,
                          MessageForwardFn forward) {
-      forward();
+      simulator_.runAfter(consts().snark_proof_verification_time,
+                          [this, message, forward] {
+                            forward();
+                            _onMessageSnark1(message);
+                          });
+    }
+    void _onMessageSnark1(const MessageSnark1 &message) {
       if (not aggregating_snark2.has_value()) {
         return;
       }
@@ -242,12 +254,19 @@ namespace beamsim::example {
               simulator_.stop();
               return;
             }
-            onMessageSnark2(snark2, [] {});
+            _onMessageSnark2(snark2);
             sendSnark2(std::move(snark2));
           });
     }
-    void onMessageSnark2(const MessageSnark2 &, MessageForwardFn forward) {
-      forward();
+    void onMessageSnark2(const MessageSnark2 &message,
+                         MessageForwardFn forward) {
+      simulator_.runAfter(consts().snark_proof_verification_time,
+                          [this, message, forward] {
+                            forward();
+                            _onMessageSnark2(message);
+                          });
+    }
+    void _onMessageSnark2(const MessageSnark2 &) {
       if (snark2_received) {
         return;
       }

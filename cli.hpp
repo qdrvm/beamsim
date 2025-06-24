@@ -450,6 +450,10 @@ struct SimulationConfig {
         .get(consts.aggregation_rate_per_sec);
     yaml.at({"consts", "snark_recursion_aggregation_rate_per_sec"})
         .get(consts.snark_recursion_aggregation_rate_per_sec);
+    yaml.at({"consts", "pq_signature_verification_time"})
+        .get(consts.pq_signature_verification_time);
+    yaml.at({"consts", "snark_proof_verification_time"})
+        .get(consts.snark_proof_verification_time);
 
     yaml.checkUnknown();
   }

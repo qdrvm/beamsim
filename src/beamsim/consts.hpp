@@ -12,6 +12,8 @@ namespace beamsim {
     double snark2_threshold = 2.0 / 3;
     double aggregation_rate_per_sec = 40;
     double snark_recursion_aggregation_rate_per_sec = 40;
+    Time pq_signature_verification_time = std::chrono::milliseconds{1};
+    Time snark_proof_verification_time = std::chrono::milliseconds{10};
   };
 
   inline Consts &consts() {
