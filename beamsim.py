@@ -66,13 +66,23 @@ run_cache = dict()
 run_exe_time = None
 
 
-def run(b="ns3", t="direct", g=10, gv=10, shuffle=False, mpi=False):
+def run(b=None, t=None, g=None, gv=None, shuffle=False, mpi=False, c=None):
+    if c is None:
+        if b is None:
+            b = "ns3"
+        if t is None:
+            t = "direct"
+        if g is None:
+            g = 10
+        if gv is None:
+            gv = 10
     global run_exe_time
     exe_time = os.stat(exe).st_mtime
     if run_exe_time != exe_time:
         run_exe_time = exe_time
         run_cache.clear()
-    key = (b, t, g, gv, shuffle, mpi)
+    c_key = None if c is None else (c, os.stat(c).st_mtime)
+    key = (b, t, g, gv, shuffle, mpi, c_key)
     output = run_cache.get(key, None)
     if output is None:
         cmd = [
@@ -82,14 +92,11 @@ def run(b="ns3", t="direct", g=10, gv=10, shuffle=False, mpi=False):
                 else ["mpirun", "-n", str(mpi)]
             ),
             exe,
-            "-b",
-            b,
-            "-t",
-            t,
-            "-g",
-            str(g),
-            "-gv",
-            str(gv),
+            *([] if c is None else ["-c", c]),
+            *([] if b is None else ["-b", b]),
+            *([] if t is None else ["-t", t]),
+            *([] if g is None else ["-g", str(g)]),
+            *([] if gv is None else ["-gv", str(gv)]),
             *(["--shuffle"] if shuffle else []),
             "--report",
         ]
