@@ -422,12 +422,20 @@ struct SimulationConfig {
     config.flags([&](auto &&...a) { Args::help(a...); });
   }
 
+  bool _parse(Args args) {
+    return flags([&](auto &&...a) { return args.parse(a...); });
+  }
+
   bool parse_args(int argc, char **argv) {
-    if (not flags([&](auto &&...a) { return Args{argc, argv}.parse(a...); })) {
+    SimulationConfig tmp;
+    if (not tmp._parse({argc, argv})) {
       return false;
     }
-    if (not config_path.empty()) {
-      yaml();
+    if (not tmp.config_path.empty()) {
+      yaml(tmp.config_path);
+    }
+    if (not _parse({argc, argv})) {
+      return false;
     }
     if (local_aggregation_only) {
       roles_config.global_aggregator_count = 1;
@@ -436,8 +444,8 @@ struct SimulationConfig {
     return true;
   }
 
-  void yaml() {
-    Yaml yaml{YAML::LoadFile(config_path)};
+  void yaml(std::string path) {
+    Yaml yaml{YAML::LoadFile(path)};
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
     yaml.at({"shuffle"}).get(shuffle);
