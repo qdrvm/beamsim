@@ -1,0 +1,57 @@
+# Build artifacts
+build/
+external/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+.gitmodules
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+.venv/
+venv/
+.env
+
+# Package manager files
+node_modules/
+package-lock.json
+yarn.lock
+
+# Test files and coverage
+test/
+tests/
+*_test.*
+*.test.*
+coverage/
+*.gcov
+*.gcno
+*.gcda
