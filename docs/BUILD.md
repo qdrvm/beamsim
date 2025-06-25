@@ -211,6 +211,22 @@ make docker_buildx
 make docker_buildx DOCKER_REGISTRY=your-registry.com/beamsim
 ```
 
+### Manual Multi-Architecture Workflow
+
+For more control over the build process, you can build each architecture separately and create a manifest:
+
+```bash
+# Build for each architecture
+make docker_image PLATFORM=amd64 DOCKER_TAG=v1.0.0-amd64
+make docker_push DOCKER_TAG=v1.0.0-amd64
+
+make docker_image PLATFORM=arm64 DOCKER_TAG=v1.0.0-arm64
+make docker_push DOCKER_TAG=v1.0.0-arm64
+
+# Create multi-architecture manifest
+make docker_manifest DOCKER_TAG=v1.0.0 DOCKER_REGISTRY=your-registry.com
+```
+
 **Note**: Multi-platform builds automatically push to the registry (default: `qdrvm`). Make sure you're logged in:
 ```bash
 docker login  # For Docker Hub (default)

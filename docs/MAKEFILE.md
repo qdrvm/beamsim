@@ -74,6 +74,25 @@ make docker_push DOCKER_REGISTRY=ghcr.io/myorg
 - Docker login credentials configured
 - Image must be built first
 
+### `docker_manifest`
+Creates and pushes multi-architecture manifest from existing platform-specific images.
+
+```bash
+make docker_manifest DOCKER_TAG=v1.0.0 DOCKER_REGISTRY=your-registry.com
+```
+
+**Requirements:**
+- Both `amd64` and `arm64` images must already be pushed to registry
+- `DOCKER_REGISTRY` must be set
+- Docker login credentials configured
+
+**Process:**
+1. Creates manifest referencing remote platform-specific images (`-amd64` and `-arm64` tagged)
+2. Pushes manifest to registry under the specified tag
+3. Enables `docker pull` to automatically select correct architecture
+
+**Note:** This command works directly with remote registry images without pulling them locally. The `--amend` flag allows overwriting existing manifests if needed.
+
 ## Development Targets
 
 ### `docker_shell`
@@ -239,8 +258,15 @@ make docker_push
 make docker_image PLATFORM=amd64
 make docker_image PLATFORM=arm64
 
-# Multi-platform release
+# Multi-platform release (automated)
 make docker_buildx
+
+# Multi-platform release (manual)
+make docker_image PLATFORM=amd64 DOCKER_TAG=v1.0.0-amd64
+make docker_push DOCKER_TAG=v1.0.0-amd64
+make docker_image PLATFORM=arm64 DOCKER_TAG=v1.0.0-arm64  
+make docker_push DOCKER_TAG=v1.0.0-arm64
+make docker_manifest DOCKER_TAG=v1.0.0
 ```
 
 ### Experimentation
