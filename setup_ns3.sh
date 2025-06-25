@@ -45,7 +45,7 @@ if [ ! -d "$NS3_INSTALL" ]; then
     fi
 
     echo "Building NS-3 (this may take a while)..."
-    $NS3_CLI configure -G Ninja "--prefix=$NS3_INSTALL" --enable-mpi
+    $NS3_CLI configure -G Ninja "--prefix=$NS3_INSTALL" --enable-mpi --enable-modules=core,network,internet,point-to-point,applications --build-profile=optimized
     $NS3_CLI build
     $NS3_CLI install
     echo "NS-3 built successfully!"
