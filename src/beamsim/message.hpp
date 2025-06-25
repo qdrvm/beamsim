@@ -3,7 +3,8 @@
 #include <functional>
 #include <memory>
 #include <span>
-#include <xxhash.hpp>
+#include <type_traits>
+#include <xxhash.h>
 
 namespace beamsim {
   class IMessage;
@@ -84,15 +85,36 @@ namespace beamsim {
 
   class MessageHasher {
    public:
+    MessageHasher() {
+      state = XXH3_createState();
+    }
+
+    ~MessageHasher() {
+      if (state != nullptr) {
+        XXH3_freeState(state);
+      }
+    }
+
     void update(BytesIn part) {
-      state_.update(part.data(), part.size());
+      if (part.empty()) {
+        return;
+      }
+      if (state == nullptr) {
+        state = XXH3_createState();
+      }
+      XXH3_64bits_update(state, part.data(), part.size());
     }
     MessageHash hash() const {
-      return state_.digest();
+      if (state == nullptr) {
+        return 0;
+      }
+      MessageHash hash = XXH3_64bits_digest(state);
+      XXH3_freeState(state);
+      return hash;
     }
 
    private:
-    xxh::hash_state64_t state_;
+    XXH3_state_t* state;
   };
 
   class IMessage {

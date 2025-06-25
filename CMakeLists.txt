@@ -15,7 +15,7 @@ add_compile_options(
   -Werror=return-type
   -Werror=sign-compare
   -Werror=mismatched-tags
-  -Werror-switch
+  -Werror=switch
 )
 
 include(FetchContent)
@@ -26,10 +26,11 @@ FetchContent_Declare(
   GIT_TAG 0.8.0
 )
 FetchContent_MakeAvailable(yaml-cpp)
+find_package(xxHash CONFIG REQUIRED)
 
 add_executable(main main.cpp)
 target_include_directories(main PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(main yaml-cpp::yaml-cpp)
+target_link_libraries(main yaml-cpp::yaml-cpp xxHash::xxhash)
 
 find_package(ns3 CONFIG)
 if(ns3_FOUND)
