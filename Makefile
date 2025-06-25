@@ -23,7 +23,7 @@ DOCKER_BUILDKIT ?= 1
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
-.PHONY: help docker_image docker_push docker_clean info security_scan
+.PHONY: help docker_image docker_push docker_clean info security_scan docker_manifest
 
 help: ## Show this help message
 	@echo "BeamSim Docker Build"
@@ -133,6 +133,17 @@ docker_size: ## Show image size information
 	@echo ""
 	@echo "Layer breakdown:"
 	docker history $(FULL_IMAGE_NAME)
+
+# Create and push multi-architecture manifest
+docker_manifest: ## Create and push multi-architecture manifest
+	@echo "Creating multi-architecture manifest for $(DOCKER_TAG)..."
+	docker manifest create --amend \
+		$(DOCKER_REGISTRY)/$(IMAGE_NAME):$(DOCKER_TAG) \
+		$(DOCKER_REGISTRY)/$(IMAGE_NAME):$(DOCKER_TAG)-amd64 \
+		$(DOCKER_REGISTRY)/$(IMAGE_NAME):$(DOCKER_TAG)-arm64
+	@echo "Pushing manifest..."
+	docker manifest push $(DOCKER_REGISTRY)/$(IMAGE_NAME):$(DOCKER_TAG)
+	@echo "Multi-architecture manifest created and pushed successfully!"
 
 # Clean all
 clean: docker_clean ## Clean all build artifacts
