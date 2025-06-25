@@ -87,11 +87,15 @@ namespace beamsim {
    public:
     MessageHasher() {
       state = XXH3_createState();
+      if (state) {
+        XXH3_64bits_reset(state);  // Properly initialize the state
+      }
     }
 
     ~MessageHasher() {
       if (state != nullptr) {
         XXH3_freeState(state);
+        state = nullptr;
       }
     }
 
@@ -101,15 +105,18 @@ namespace beamsim {
       }
       if (state == nullptr) {
         state = XXH3_createState();
+        XXH3_64bits_reset(state);  // Properly initialize the state
       }
       XXH3_64bits_update(state, part.data(), part.size());
     }
+
     MessageHash hash() const {
       if (state == nullptr) {
         return 0;
       }
       MessageHash hash = XXH3_64bits_digest(state);
-      XXH3_freeState(state);
+      XXH3_freeState(const_cast<XXH3_state_t*>(state));  // Need to cast away constness to free
+      const_cast<MessageHasher*>(this)->state = nullptr;  // Avoid double-free by setting to nullptr
       return hash;
     }
 

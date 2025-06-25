@@ -26,11 +26,18 @@ FetchContent_Declare(
   GIT_TAG 0.8.0
 )
 FetchContent_MakeAvailable(yaml-cpp)
-find_package(xxHash CONFIG REQUIRED)
+
+FetchContent_Declare(
+        xxHash
+        GIT_REPOSITORY https://github.com/Cyan4973/xxHash.git
+        GIT_TAG v0.8.2
+        SOURCE_SUBDIR cmake_unofficial
+)
+FetchContent_MakeAvailable(xxHash)
 
 add_executable(main main.cpp)
 target_include_directories(main PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(main yaml-cpp::yaml-cpp xxHash::xxhash)
+target_link_libraries(main yaml-cpp::yaml-cpp xxhash)
 
 find_package(ns3 CONFIG)
 if(ns3_FOUND)
