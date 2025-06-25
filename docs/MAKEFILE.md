@@ -8,7 +8,7 @@ This document provides a comprehensive reference for all Makefile targets and va
 
 | Variable | Default | Description | Example |
 |----------|---------|-------------|---------|
-| `DOCKER_REGISTRY` | `qdrvm/beamsim` | Docker registry prefix | `DOCKER_REGISTRY=ghcr.io/myorg` |
+| `DOCKER_REGISTRY` | `qdrvm` | Docker registry prefix | `DOCKER_REGISTRY=ghcr.io/myorg` |
 | `IMAGE_NAME` | `beamsim` | Docker image name | `IMAGE_NAME=beamsim-dev` |
 | `PLATFORM` | `amd64` | Target platform | `PLATFORM=arm64` |
 | `NS3_VERSION` | `3.44` | NS-3 simulator version | `NS3_VERSION=3.43` |
@@ -117,15 +117,30 @@ make docker_clean
 ### `docker_buildx`
 Builds multi-platform images using Docker Buildx.
 
+**Prerequisites:**
 ```bash
+# Setup buildx builder first
+docker buildx create --name beamsim-builder --use
+docker buildx inspect --bootstrap
+```
+
+**Usage:**
+```bash
+# Build for multiple platforms (uses default registry: qdrvm)
 make docker_buildx
+
+# Build with custom registry
 make docker_buildx DOCKER_REGISTRY=myregistry.com
 ```
 
 **Features:**
-- Builds for linux/amd64 and linux/arm64
-- Automatically pushes if registry is set
-- Requires buildx setup
+- Builds for linux/amd64 and linux/arm64 simultaneously
+- Automatically pushes to registry (default: `qdrvm`, can be overridden)
+- Requires proper buildx setup
+
+**Troubleshooting:**
+- Error "Multi-platform build is not supported": Run buildx setup commands above
+- Error "cannot load": Multi-platform builds must push to registry (default: `qdrvm`)
 
 ### `security_scan`
 Performs security scanning on the built image (if Trivy is installed).
@@ -263,9 +278,19 @@ make docker_push DOCKER_REGISTRY=your-registry.com
 
 **Multi-platform build fails:**
 ```bash
-# Ensure buildx is set up
-docker buildx create --use
+# Error: "Multi-platform build is not supported for the docker driver"
+# Solution: Set up buildx properly
+docker buildx create --name beamsim-builder --use
+docker buildx inspect --bootstrap
+
+# Verify setup
+docker buildx ls
+
+# Multi-platform builds require a registry (uses default: qdrvm)
 make docker_buildx
+
+# Or with custom registry
+make docker_buildx DOCKER_REGISTRY=your-registry.com
 ```
 
 **Out of disk space:**

@@ -35,7 +35,7 @@ The build system uses the following configurable variables:
 | `NS3_VERSION` | `3.44` | NS-3 network simulator version |
 | `CLANG_VERSION` | `19` | Clang compiler version |
 | `DOCKER_TAG` | `$(GIT_COMMIT)-$(PLATFORM)` | Docker image tag |
-| `DOCKER_REGISTRY` | `qdrvm/beamsim` | Docker registry prefix |
+| `DOCKER_REGISTRY` | `qdrvm` | Docker registry prefix |
 
 ## Build Process
 
@@ -121,6 +121,27 @@ The build system is optimized for:
 - **Incremental Builds**: ~2-5 minutes (NS-3 cached, only BeamSim rebuilt)
 - **Code-only Changes**: ~30-90 seconds (both NS-3 and dependencies cached)
 
+### Quick Reference
+
+**Single platform build (works everywhere):**
+```bash
+make docker_image
+make docker_image PLATFORM=arm64
+```
+
+**Multi-platform build (requires setup):**
+```bash
+# One-time setup
+docker buildx create --name beamsim-builder --use
+docker buildx inspect --bootstrap
+
+# Build and push (uses default registry: qdrvm)
+make docker_buildx
+
+# Or use custom registry
+make docker_buildx DOCKER_REGISTRY=your-custom-registry.com
+```
+
 ## Troubleshooting
 
 ### Common Issues
@@ -135,9 +156,18 @@ The build system is optimized for:
    docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
    ```
 
-3. **Memory Issues**: NS-3 compilation requires significant memory (4GB+ recommended)
+3. **Multi-platform Build Issues**: The `docker_buildx` target requires proper buildx setup
+   ```bash
+   # Create and use a buildx builder
+   docker buildx create --name beamsim-builder --use
+   
+   # Alternatively, enable containerd image store (Docker Desktop)
+   # Settings > Features in development > Use containerd for pulling and storing images
+   ```
 
-4. **Network Issues**: Ensure access to apt.llvm.org and ns-3 download servers
+4. **Memory Issues**: NS-3 compilation requires significant memory (4GB+ recommended)
+
+5. **Network Issues**: Ensure access to apt.llvm.org and ns-3 download servers
 
 ### Debug Build Issues
 
@@ -157,12 +187,35 @@ docker run -it debug-ns3 bash
 
 ### Multi-Platform Builds
 
+Multi-platform builds require Docker Buildx setup:
+
+```bash
+# Method 1: Create a dedicated buildx builder (recommended)
+docker buildx create --name beamsim-builder --use
+docker buildx inspect --bootstrap
+
+# Method 2: Enable containerd image store (Docker Desktop)
+# Go to Settings > Features in development > Use containerd for pulling and storing images
+
+# Verify buildx is working
+docker buildx ls
+```
+
+Once buildx is configured:
+
 ```bash
 # Build for multiple platforms simultaneously
 make docker_buildx
 
-# Push to registry
+# Push to custom registry (if needed)
 make docker_buildx DOCKER_REGISTRY=your-registry.com/beamsim
+```
+
+**Note**: Multi-platform builds automatically push to the registry (default: `qdrvm`). Make sure you're logged in:
+```bash
+docker login  # For Docker Hub (default)
+# or
+docker login your-registry.com  # For custom registry
 ```
 
 ### Development Workflow
