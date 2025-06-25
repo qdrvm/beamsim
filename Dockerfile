@@ -3,7 +3,6 @@ FROM ubuntu:24.04 AS ns3-builder
 
 # Build arguments
 ARG NS3_VERSION=3.44
-ARG TARGETARCH=amd64
 ARG CLANG_VERSION=19
 
 # Install build dependencies for NS-3
@@ -107,9 +106,6 @@ FROM ubuntu:24.04 AS beamsim-runtime
 
 # Re-declare build args for runtime stage
 ARG NS3_VERSION=3.44
-
-# Build arguments needed for runtime stage
-ARG TARGETARCH=amd64
 
 # Add metadata labels
 LABEL maintainer="BeamSim Team" \
