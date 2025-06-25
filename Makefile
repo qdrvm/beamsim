@@ -122,7 +122,7 @@ docker_buildx: ## Build multi-platform image using buildx
 		--label "org.opencontainers.image.version=$(VERSION)" \
 		--label "org.opencontainers.image.revision=$(GIT_COMMIT)" \
 		$(DOCKER_BUILD_ARGS) \
-		-t $(IMAGE_NAME):$(DOCKER_TAG) \
+		-t $(if $(DOCKER_REGISTRY),$(DOCKER_REGISTRY)/,)$(IMAGE_NAME):$(GIT_COMMIT) \
 		$(if $(DOCKER_REGISTRY),--push,--load) \
 		.
 
