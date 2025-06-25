@@ -6,6 +6,7 @@
 #include <beamsim/grid/message.hpp>
 #include <beamsim/network.hpp>
 #include <beamsim/simulator.hpp>
+#include <beamsim/thread.hpp>
 #include <print>
 
 #ifdef ns3_FOUND
@@ -182,7 +183,7 @@ namespace beamsim::example {
       if (role() == Role::GlobalAggregator) {
         aggregating_snark2.emplace();
       }
-      simulator_.runAfter(consts().signature_time, [this] {
+      thread_.run(simulator_, consts().signature_time, [this] {
         MessageSignature signature{peer_index_};
         _onMessageSignature(signature);
         sendSignature(std::move(signature));
@@ -195,11 +196,12 @@ namespace beamsim::example {
 
     void onMessageSignature(const MessageSignature &message,
                             MessageForwardFn forward) {
-      simulator_.runAfter(consts().pq_signature_verification_time,
-                          [this, message, forward] {
-                            forward();
-                            _onMessageSignature(message);
-                          });
+      thread_.run(simulator_,
+                  consts().pq_signature_verification_time,
+                  [this, message, forward] {
+                    forward();
+                    _onMessageSignature(message);
+                  });
     }
     void _onMessageSignature(const MessageSignature &message) {
       if (not aggregating_snark1.has_value()) {
@@ -214,26 +216,28 @@ namespace beamsim::example {
       }
       auto snark1 = std::move(aggregating_snark1.value());
       aggregating_snark1.reset();
-      simulator_.runAfter(
-          timeSeconds(received / consts().aggregation_rate_per_sec),
-          [this, snark1{std::move(snark1)}]() mutable {
-            report(simulator_, "snark1_sent", snark1.peer_indices.ones());
-            if (shared_state_.stop_on_create_snark1) {
-              shared_state_.done = true;
-              simulator_.stop();
-              return;
-            }
-            _onMessageSnark1(snark1);
-            sendSnark1(std::move(snark1));
-          });
+      thread_.run(simulator_,
+                  timeSeconds(received / consts().aggregation_rate_per_sec),
+                  [this, snark1{std::move(snark1)}]() mutable {
+                    report(
+                        simulator_, "snark1_sent", snark1.peer_indices.ones());
+                    if (shared_state_.stop_on_create_snark1) {
+                      shared_state_.done = true;
+                      simulator_.stop();
+                      return;
+                    }
+                    _onMessageSnark1(snark1);
+                    sendSnark1(std::move(snark1));
+                  });
     }
     void onMessageSnark1(const MessageSnark1 &message,
                          MessageForwardFn forward) {
-      simulator_.runAfter(consts().snark_proof_verification_time,
-                          [this, message, forward] {
-                            forward();
-                            _onMessageSnark1(message);
-                          });
+      thread_.run(simulator_,
+                  consts().snark_proof_verification_time,
+                  [this, message, forward] {
+                    forward();
+                    _onMessageSnark1(message);
+                  });
     }
     void _onMessageSnark1(const MessageSnark1 &message) {
       if (not aggregating_snark2.has_value()) {
@@ -250,7 +254,8 @@ namespace beamsim::example {
       }
       auto snark2 = std::move(aggregating_snark2.value());
       aggregating_snark2.reset();
-      simulator_.runAfter(
+      thread_.run(
+          simulator_,
           timeSeconds(snark1_received
                       / consts().snark_recursion_aggregation_rate_per_sec),
           [this, snark2{std::move(snark2)}]() mutable {
@@ -266,11 +271,12 @@ namespace beamsim::example {
     }
     void onMessageSnark2(const MessageSnark2 &message,
                          MessageForwardFn forward) {
-      simulator_.runAfter(consts().snark_proof_verification_time,
-                          [this, message, forward] {
-                            forward();
-                            _onMessageSnark2(message);
-                          });
+      thread_.run(simulator_,
+                  consts().snark_proof_verification_time,
+                  [this, message, forward] {
+                    forward();
+                    _onMessageSnark2(message);
+                  });
     }
     void _onMessageSnark2(const MessageSnark2 &) {
       if (snark2_received) {
@@ -301,6 +307,7 @@ namespace beamsim::example {
     // TODO: remove when aggregating multiple times
     size_t snark1_received = 0;
     std::optional<MessageSnark2> aggregating_snark2;
+    Thread thread_;
   };
 
   class PeerDirect : public PeerBase {
