@@ -117,9 +117,6 @@ LABEL maintainer="BeamSim Team" \
 # Install only essential runtime dependencies for Clang/libc++
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libc++1 \
-    libc++abi1 \
-    libc6 \
-    libgcc-s1 \
     ca-certificates \
     libopenmpi3 \
     libopenmpi-dev \
