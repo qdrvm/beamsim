@@ -1,10 +1,11 @@
 #pragma once
 
+#include <xxhash.h>
+
 #include <functional>
 #include <memory>
 #include <span>
 #include <type_traits>
-#include <xxhash.h>
 
 namespace beamsim {
   class IMessage;
@@ -88,41 +89,29 @@ namespace beamsim {
    public:
     MessageHasher() {
       state = XXH3_createState();
-      if (state) {
-        XXH3_64bits_reset(state);  // Properly initialize the state
+      if (state == nullptr) {
+        throw std::logic_error{"XXH3_createState"};
       }
+      XXH3_64bits_reset(state);
     }
 
     ~MessageHasher() {
-      if (state != nullptr) {
-        XXH3_freeState(state);
-        state = nullptr;
-      }
+      XXH3_freeState(state);
     }
 
     void update(BytesIn part) {
       if (part.empty()) {
         return;
       }
-      if (state == nullptr) {
-        state = XXH3_createState();
-        XXH3_64bits_reset(state);  // Properly initialize the state
-      }
       XXH3_64bits_update(state, part.data(), part.size());
     }
 
     MessageHash hash() const {
-      if (state == nullptr) {
-        return 0;
-      }
-      MessageHash hash = XXH3_64bits_digest(state);
-      XXH3_freeState(const_cast<XXH3_state_t*>(state));  // Need to cast away constness to free
-      const_cast<MessageHasher*>(this)->state = nullptr;  // Avoid double-free by setting to nullptr
-      return hash;
+      return XXH3_64bits_digest(state);
     }
 
    private:
-    XXH3_state_t* state;
+    XXH3_state_t *state;
   };
 
   class IMessage {
