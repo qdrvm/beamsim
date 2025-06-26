@@ -316,12 +316,17 @@ namespace beamsim::example {
     static void connect(ISimulator &simulator, const Roles &roles) {
       for (PeerIndex i = 0; i < roles.validator_count; ++i) {
         auto &group = roles.groups.at(roles.group_of_validator.at(i));
-        if (roles.roles.at(i) == Role::LocalAggregator) {
-          for (auto &to_peer : roles.global_aggregators) {
-            simulator.connect(i, to_peer);
+        for (auto &to_peer : group.local_aggregators) {
+          if (to_peer == i) {
+            continue;
           }
-        } else {
-          for (auto &to_peer : group.local_aggregators) {
+          simulator.connect(i, to_peer);
+        }
+        if (roles.roles.at(i) != Role::Validator) {
+          for (auto &to_peer : roles.global_aggregators) {
+            if (to_peer == i) {
+              continue;
+            }
             simulator.connect(i, to_peer);
           }
         }
