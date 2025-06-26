@@ -7,7 +7,6 @@
 #include <beamsim/network.hpp>
 #include <beamsim/simulator.hpp>
 #include <beamsim/thread.hpp>
-#include <print>
 
 #ifdef ns3_FOUND
 #include <beamsim/ns3/simulator.hpp>

@@ -6,7 +6,6 @@
 #include <beamsim/gossip/config.hpp>
 #include <beamsim/ns3/mpi.hpp>
 #include <charconv>
-#include <print>
 
 struct Args {
   Args(int argc, char **argv)

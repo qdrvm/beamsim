@@ -28,7 +28,24 @@ BeamSim simulates validator networks with configurable group structures, support
 
 ## Building the Project
 
-### Quick Build (without NS-3)
+### Docker Build (Recommended)
+
+The easiest way to build and run BeamSim is using Docker:
+
+```bash
+# Build Docker image
+make docker_image
+
+# Test the build
+make docker_test
+
+# Run BeamSim in container
+docker run --rm qdrvm/beamsim/beamsim:$(git rev-parse --short=7 HEAD)-amd64
+```
+
+For detailed Docker build configuration and options, see [`docs/BUILD.md`](docs/BUILD.md) and [`docs/MAKEFILE.md`](docs/MAKEFILE.md).
+
+### Local Build (without NS-3)
 
 ```bash
 # Configure and build
@@ -36,7 +53,7 @@ cmake -G Ninja -B build -D CMAKE_BUILD_TYPE=RelWithDebInfo
 ninja -C build
 ```
 
-### Building with NS-3 Support
+### Local Build with NS-3 Support
 
 1. **Setup NS-3** (automated):
    ```bash
@@ -246,6 +263,13 @@ After building, verify the installation works correctly:
 ```
 
 Expected output should show configuration details and simulation results with "Status: SUCCESS".
+
+## Documentation
+
+For detailed information about building, configuration, and development:
+
+- **[Build Guide](docs/BUILD.md)**: Complete Docker build instructions, configuration options, and troubleshooting
+- **[Makefile Reference](docs/MAKEFILE.md)**: Comprehensive guide to all Makefile targets and variables
 
 ## License
 
