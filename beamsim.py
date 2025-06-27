@@ -41,8 +41,15 @@ class Metrics:
         self.a = np.zeros((2, 3, 2, self.t))
         for _, _, i1, i2, i3, bucket in rows:
             self.a[i1, i2, i3, : len(bucket)] += bucket
+        self.messages_received_role = [np.cumsum(self.a[0][i][0]) for i in range(3)]
+        self.messages_received_all = np.sum(self.messages_received_role, axis=0)
         self.messages_sent_role = [np.cumsum(self.a[0][i][1]) for i in range(3)]
         self.messages_sent_all = np.sum(self.messages_sent_role, axis=0)
+        self.bytes_received_role = [np.cumsum(self.a[1][i][0]) for i in range(3)]
+        self.bytes_received_all = np.sum(self.bytes_received_role, axis=0)
+        self.bytes_received_role_avg = [
+            a / n for a, n in zip(self.bytes_received_role, roles)
+        ]
         self.bytes_sent_role = [np.cumsum(self.a[1][i][1]) for i in range(3)]
         self.bytes_sent_all = np.sum(self.bytes_sent_role, axis=0)
         self.bytes_sent_role_avg = [a / n for a, n in zip(self.bytes_sent_role, roles)]
