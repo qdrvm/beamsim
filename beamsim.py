@@ -27,10 +27,11 @@ def time_axis(items):
 
 def get_snark1_received(items):
     rows = filter_report(items, "snark1_received")
-    for i in reversed(range(1, len(rows))):
-        if rows[i][2] <= rows[i - 1][2]:
-            rows.pop(i)
-    return rows
+    rows2 = list()
+    for row in rows:
+        if not rows2 or row[2] > rows2[-1][2]:
+            rows2.append(row)
+    return rows2
 
 
 class Metrics:
@@ -73,7 +74,9 @@ run_cache = dict()
 run_exe_time = None
 
 
-def run(b=None, t=None, g=None, gv=None, shuffle=False, mpi=False, c=None, la=None, ga=None):
+def run(
+    b=None, t=None, g=None, gv=None, shuffle=False, mpi=False, c=None, la=None, ga=None
+):
     if c is None:
         if b is None:
             b = "ns3"
