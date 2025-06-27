@@ -425,6 +425,16 @@ struct SimulationConfig {
       {{"--report"}, report, "Print report data for plots"}};
   bool help = false;
   Args::FlagBool flag_help{{{"-h", "--help"}, help, "Show this help message"}};
+  Args::FlagInt<beamsim::example::GroupIndex> flag_local_aggregators{{
+      {"-la", "--local-aggregators"},
+      roles_config.group_local_aggregator_count,
+      "Number of local aggregators per group",
+  }};
+  Args::FlagInt<beamsim::example::GroupIndex> flag_global_aggregators{{
+      {"-ga", "--global-aggregators"},
+      roles_config.global_aggregator_count,
+      "Number of global aggregators",
+  }};
 
   auto flags(auto &&f) {
     return f(flag_config_path,
@@ -436,7 +446,9 @@ struct SimulationConfig {
              flag_local_aggregation_only,
              flag_gml_path,
              flag_report,
-             flag_help);
+             flag_help,
+             flag_local_aggregators,
+             flag_global_aggregators);
   }
 
   beamsim::gossip::Config gossip_config;

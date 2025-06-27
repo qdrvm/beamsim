@@ -22,8 +22,8 @@ consts:
   snark2_threshold: 0.66
   aggregation_rate_per_sec: 1000
   snark_recursion_aggregation_rate_per_sec: 100
-  pq_signature_verification_time: 50ms
-  snark_proof_verification_time: 50ms
+  pq_signature_verification_time: 3ms
+  snark_proof_verification_time: 10ms
 
 network:
   direct:
