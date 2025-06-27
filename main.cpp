@@ -4,6 +4,7 @@
 #include <beamsim/gossip/peer.hpp>
 #include <beamsim/grid/grid.hpp>
 #include <beamsim/grid/message.hpp>
+#include <beamsim/mmap.hpp>
 #include <beamsim/network.hpp>
 #include <beamsim/simulator.hpp>
 #include <beamsim/thread.hpp>
@@ -560,7 +561,15 @@ void run_simulation(const SimulationConfig &config) {
   beamsim::Random random{config.random_seed};
   auto roles = beamsim::example::Roles::make(config.roles_config);
   beamsim::Routers routers;
-  if (config.direct_router) {
+  if (not config.gml_path.empty()) {
+    beamsim::Mmap file{config.gml_path};
+    if (not file.good()) {
+      std::println("can't read gml file: {}", config.gml_path);
+      exit(EXIT_FAILURE);
+    }
+    auto gml = beamsim::Gml::decode(file.data);
+    routers = beamsim::Routers::make(random, roles, gml);
+  } else if (config.direct_router) {
     routers = beamsim::Routers::make(random, roles, *config.direct_router);
   } else {
     routers = beamsim::Routers::make(random, roles, config.shuffle);

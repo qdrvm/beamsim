@@ -53,3 +53,6 @@ if(ns3_FOUND)
 else()
   message("ns3 not found")
 endif()
+
+add_executable(gml2bin gml2bin.cpp)
+target_include_directories(gml2bin PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <beamsim/example/roles.hpp>
+#include <beamsim/gml.hpp>
 #include <beamsim/random.hpp>
 #include <beamsim/wire_props.hpp>
 #include <deque>
@@ -117,25 +118,50 @@ namespace beamsim {
       return routers;
     }
 
-    static Routers make(Random &random,
-                        const example::Roles &roles,
-                        const DirectRouterConfig &config) {
+    static Routers makeDirect(const example::Roles &roles, const auto &f) {
       Routers routers;
       auto n = roles.validator_count;
       routers.peer_wire_.reserve(n);
       routers.router_wires_.resize(n);
       routers.routes_.resize(n);
+      for (auto &row : routers.routes_) {
+        row.resize(n, {0, WireProps::kZero});
+      }
       for (PeerIndex i1 = 0; i1 < n; ++i1) {
-        auto &row = routers.routes_.at(i1);
-        row.reserve(n);
         routers.peer_wire_.emplace_back(i1, WireProps::kZero);
-        for (PeerIndex i2 = 0; i2 < n; ++i2) {
-          auto wire = config.make(random);
-          routers.router_wires_.at(i1).emplace(i2, wire);
-          row.emplace_back(i2, wire);
+        for (PeerIndex i2 = 0; i2 < i1; ++i2) {
+          auto wire = f(i1, i2);
+          routers.wireRouter(i1, i2, wire);
+          routers.routes_.at(i1).at(i2) = {i2, wire};
+          routers.routes_.at(i2).at(i1) = {i1, wire};
         }
       }
       return routers;
+    }
+
+    static Routers make(Random &random,
+                        const example::Roles &roles,
+                        const DirectRouterConfig &config) {
+      return makeDirect(
+          roles, [&](PeerIndex, PeerIndex) { return config.make(random); });
+    }
+
+    static Routers make(Random &random,
+                        const example::Roles &roles,
+                        const Gml &gml) {
+      auto g = gml.nodes.size();
+      // TODO: shuffle
+      return makeDirect(roles, [&](PeerIndex i1, PeerIndex i2) {
+        if (i1 < g) {
+          auto &node1 = gml.nodes.at(i1);
+          auto &node2 = gml.nodes.at(i2);
+          uint64_t bitrate = std::min(node1.bitrate(), node2.bitrate());
+          auto latency_us = gml.latency_us.at(i1, i2);
+          return WireProps{bitrate, latency_us / 1000};
+        } else {
+          throw std::logic_error{"TODO: expand gml"};
+        }
+      });
     }
 
     void addPeer(PeerIndex router, const WireProps &wire) {

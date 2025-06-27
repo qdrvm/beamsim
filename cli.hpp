@@ -413,6 +413,12 @@ struct SimulationConfig {
       "stop simulation after local aggregator generates snark1",
   }};
   std::optional<beamsim::DirectRouterConfig> direct_router;
+  std::string gml_path;
+  Args::FlagStr flag_gml_path{{
+      {"--gml"},
+      gml_path,
+      "bin gml path",
+  }};
   uint32_t random_seed = 0;
   bool report = false;
   Args::FlagBool flag_report{
@@ -428,6 +434,7 @@ struct SimulationConfig {
              flag_validators_per_group,
              flag_shuffle,
              flag_local_aggregation_only,
+             flag_gml_path,
              flag_report,
              flag_help);
   }
@@ -506,6 +513,7 @@ struct SimulationConfig {
       range("bitrate", config.bitrate);
       range("delay", config.delay);
     }
+    yaml.at({"network", "gml"}).get(gml_path);
 
     yaml.checkUnknown();
   }
