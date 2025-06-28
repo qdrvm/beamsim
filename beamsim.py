@@ -1,7 +1,10 @@
 import json
 import subprocess
 import os
+import warnings
 import numpy as np
+import tempfile
+import hashlib
 
 
 def parse_report(lines):
@@ -92,6 +95,11 @@ run_exe_time = None
 def run(
     b=None, t=None, g=None, gv=None, shuffle=False, mpi=False, c=None, la=None, ga=None
 ):
+    if not isinstance(mpi, bool) and mpi > os.cpu_count():
+        warnings.warn(
+            f"beamsim.run requested mpi {mpi} exceeds os cpu count {os.cpu_count()}"
+        )
+        mpi = os.cpu_count()
     if c is None:
         if b is None:
             b = "ns3"
@@ -131,3 +139,19 @@ def run(
         output = subprocess.check_output(cmd, text=True)
         run_cache[key] = output
     return parse_report(output)
+
+
+yaml_dir = None
+
+
+def yaml(yaml: str):
+    global yaml_dir
+    if yaml_dir is None:
+        yaml_dir = os.path.join(tempfile.gettempdir(), "beamsim-yaml-md5")
+        os.makedirs(yaml_dir, exist_ok=True)
+    md5 = hashlib.md5(yaml.encode()).hexdigest()
+    path = os.path.join(yaml_dir, md5)
+    if not os.path.exists(path):
+        with open(path, "wb") as file:
+            file.write(yaml.encode())
+    return path
