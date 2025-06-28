@@ -1,5 +1,5 @@
 # Multi-stage build for BeamSim with dedicated NS-3 stage
-FROM ubuntu:24.04 AS ns3-builder
+FROM ubuntu:25.10 AS ns3-builder
 
 # Build arguments
 ARG NS3_VERSION=3.44
@@ -15,9 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Add LLVM apt repository for Clang (using variable)
-RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
-    && add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${CLANG_VERSION} main"
+# Add LLVM apt repository for Clang (using modern GPG key management)
+RUN mkdir -p /etc/apt/keyrings \
+    && wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /etc/apt/keyrings/llvm-snapshot.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/plucky/ llvm-toolchain-plucky-${CLANG_VERSION} main" > /etc/apt/sources.list.d/llvm.list
 
 # Install Clang and development tools (using variable)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -102,10 +103,11 @@ RUN cmake -G Ninja -B build \
     && ninja -C build -j$(nproc)
 
 # Runtime stage - minimal distroless-like image
-FROM ubuntu:24.04 AS beamsim-runtime
+FROM ubuntu:25.10 AS beamsim-runtime
 
 # Re-declare build args for runtime stage
 ARG NS3_VERSION=3.44
+ARG CLANG_VERSION=19
 
 # Add metadata labels
 LABEL maintainer="BeamSim Team" \
@@ -114,12 +116,25 @@ LABEL maintainer="BeamSim Team" \
       org.opencontainers.image.source="https://github.com/qdrvm/beamsim" \
       org.opencontainers.image.documentation="https://github.com/qdrvm/beamsim/README.md"
 
-# Install only essential runtime dependencies for Clang/libc++
+# Add LLVM repository for runtime libc++ libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libc++1 \
+    wget \
+    gnupg \
     ca-certificates \
-    libopenmpi3 \
+    && mkdir -p /etc/apt/keyrings \
+    && wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /etc/apt/keyrings/llvm-snapshot.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/plucky/ llvm-toolchain-plucky-${CLANG_VERSION} main" > /etc/apt/sources.list.d/llvm.list \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install runtime dependencies including Python for Jupyter
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libc++1-${CLANG_VERSION} \
+    libc++abi1-${CLANG_VERSION} \
     libopenmpi-dev \
+    python3 \
+    python3-pip \
+    python3-venv \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /tmp/* \
@@ -130,19 +145,37 @@ RUN groupadd -r beamsim -g 10001 \
     && useradd -r -u 10001 -g beamsim -m -d /home/beamsim -s /sbin/nologin beamsim
 
 # Copy binary from builder stage
-COPY --from=beamsim-builder --chown=beamsim:beamsim /build/build/main /usr/local/bin/beamsim
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/build/beamsim /usr/local/bin/beamsim
 
 # Copy NS-3 libraries from builder stage
 COPY --from=beamsim-builder --chown=root:root /build/external/ns-allinone-${NS3_VERSION}/install/lib/ /usr/local/lib/
+
+# Copy shadow-atlas.bin file from builder stage
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/shadow-atlas.bin /home/beamsim/shadow-atlas.bin
+
+# Copy Python files and notebook for Jupyter
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/beamsim.py /home/beamsim/beamsim.py
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/beamsim.ipynb /home/beamsim/beamsim.ipynb
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/requirements.txt /home/beamsim/requirements.txt
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/example.yaml /home/beamsim/example.yaml
+
 RUN chmod 755 /usr/local/bin/beamsim && ldconfig
+
+# Install Python packages including Jupyter
+USER root
+RUN pip3 install --no-cache-dir --break-system-packages jupyter numpy seaborn matplotlib pandas
+USER beamsim
 
 # Switch to non-root user
 USER beamsim
 WORKDIR /home/beamsim
 
+# Expose Jupyter port
+EXPOSE 8080
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD /usr/local/bin/beamsim --help > /dev/null || exit 1
 
-# Default command with explicit path
-CMD ["/usr/local/bin/beamsim", "--help"]
+# Default command starts Jupyter server
+CMD ["jupyter", "notebook", "--ip=0.0.0.0", "--port=8080", "--no-browser", "--NotebookApp.token=''", "--NotebookApp.password=''"]

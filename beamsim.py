@@ -86,7 +86,13 @@ role_name = [
     "Global Aggregator",
 ]
 
-exe = "build/main"
+exe = "build/beamsim"
+if not os.path.exists(exe): # for docker build
+    exe = "/usr/local/bin/beamsim"
+    if not os.path.exists(exe):
+        raise FileNotFoundError(
+            f"Executable {exe} not found. Please build the project first."
+        )
 
 run_cache = dict()
 run_exe_time = None
