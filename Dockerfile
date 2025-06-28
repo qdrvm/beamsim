@@ -134,6 +134,10 @@ COPY --from=beamsim-builder --chown=beamsim:beamsim /build/build/main /usr/local
 
 # Copy NS-3 libraries from builder stage
 COPY --from=beamsim-builder --chown=root:root /build/external/ns-allinone-${NS3_VERSION}/install/lib/ /usr/local/lib/
+
+# Copy shadow-atlas.bin file from builder stage
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/shadow-atlas.bin /home/beamsim/shadow-atlas.bin
+
 RUN chmod 755 /usr/local/bin/beamsim && ldconfig
 
 # Switch to non-root user
