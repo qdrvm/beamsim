@@ -158,6 +158,7 @@ namespace beamsim::example {
 
   struct SharedState {
     const Roles &roles;
+    bool snark1_pull;
     bool stop_on_create_snark1;
     PeerIndex snark2_received = 0;
     bool done = false;
@@ -202,9 +203,51 @@ namespace beamsim::example {
     }
 
     virtual void sendSignature(MessageSignature message) = 0;
-    virtual void sendSnark1(MessageSnark1 message) = 0;
+    virtual void sendSnark1(MessagePtr message) = 0;
     virtual void sendSnark2(MessageSnark2 message) = 0;
 
+    bool onMessagePull(PeerIndex from_peer,
+                       const MessagePtr &any_message,
+                       const MessageForwardFn &forward) {
+      if (not shared_state_.snark1_pull) {
+        return false;
+      }
+      auto *message = dynamic_cast<const Message *>(any_message.get());
+      if (not message) {
+        return false;
+      }
+      if (auto *ihave = std::get_if<MessageIhaveSnark1>(&message->variant)) {
+        auto bits1 = pulling_max_.ones();
+        pulling_max_.set(ihave->peer_indices);
+        auto bits2 = pulling_max_.ones();
+        if (bits2 <= bits1) {
+          return true;
+        }
+        assert2(forward);
+        if (not pulling_.emplace(ihave->peer_indices, forward).second) {
+          return true;
+        }
+        send(from_peer,
+             std::make_shared<Message>(
+                 MessageIwantSnark1{std::move(ihave->peer_indices)}));
+        return true;
+      }
+      if (auto *iwant = std::get_if<MessageIwantSnark1>(&message->variant)) {
+        assert2(snark1_cache_.contains(iwant->peer_indices));
+        send(from_peer,
+             std::make_shared<Message>(
+                 MessageSnark1{std::move(iwant->peer_indices)}));
+        return true;
+      }
+      if (auto *snark1 = std::get_if<MessageSnark1>(&message->variant)) {
+        auto forward = std::exchange(pulling_.at(snark1->peer_indices), {});
+        assert2(forward);
+        snark1_cache_.emplace(snark1->peer_indices);
+        onMessageSnark1(*snark1, std::move(forward));
+        return true;
+      }
+      return false;
+    }
     void onMessageSignature(const MessageSignature &message,
                             MessageForwardFn forward) {
       thread_.run(simulator_,
@@ -239,7 +282,13 @@ namespace beamsim::example {
                       return;
                     }
                     _onMessageSnark1(snark1);
-                    sendSnark1(std::move(snark1));
+                    if (shared_state_.snark1_pull) {
+                      sendSnark1(std::make_shared<Message>(
+                          MessageIhaveSnark1{snark1.peer_indices}));
+                      snark1_cache_.emplace(std::move(snark1.peer_indices));
+                    } else {
+                      sendSnark1(std::make_shared<Message>(std::move(snark1)));
+                    }
                   });
     }
     void onMessageSnark1(const MessageSnark1 &message,
@@ -319,6 +368,9 @@ namespace beamsim::example {
     // TODO: remove when aggregating multiple times
     size_t snark1_received = 0;
     std::optional<MessageSnark2> aggregating_snark2;
+    std::unordered_set<BitSet> snark1_cache_;
+    std::unordered_map<BitSet, MessageForwardFn> pulling_;
+    BitSet pulling_max_;
     Thread thread_;
   };
 
@@ -348,6 +400,21 @@ namespace beamsim::example {
 
     // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      auto forward_snark1 = [this, from_peer, any_message] {
+        // global aggregator forwards snark1 from local aggregator to global aggregators
+        if (shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator
+            and role() == Role::GlobalAggregator) {
+          for (auto &to_peer : shared_state_.roles.global_aggregators) {
+            if (to_peer == peer_index_) {
+              continue;
+            }
+            send(to_peer, any_message);
+          }
+        }
+      };
+      if (onMessagePull(from_peer, any_message, forward_snark1)) {
+        return;
+      }
       auto &message = dynamic_cast<Message &>(*any_message);
       if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
         onMessageSignature(*signature, [this, from_peer, any_message] {
@@ -362,19 +429,10 @@ namespace beamsim::example {
             }
           }
         });
+      } else if (std::holds_alternative<MessageIhaveSnark1>(message.variant)) {
+        onMessagePull(from_peer, any_message, std::move(forward_snark1));
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
-        onMessageSnark1(*snark1, [this, from_peer, any_message] {
-          // global aggregator forwards snark1 from local aggregator to global aggregators
-          if (shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator
-              and role() == Role::GlobalAggregator) {
-            for (auto &to_peer : shared_state_.roles.global_aggregators) {
-              if (to_peer == peer_index_) {
-                continue;
-              }
-              send(to_peer, any_message);
-            }
-          }
-        });
+        onMessageSnark1(*snark1, std::move(forward_snark1));
       } else {
         auto &snark2 = std::get<MessageSnark2>(message.variant);
         onMessageSnark2(snark2, [] {
@@ -401,11 +459,11 @@ namespace beamsim::example {
              any_message);
       }
     }
-    void sendSnark1(MessageSnark1 message) override {
+    void sendSnark1(MessagePtr message) override {
       assert2(role() == Role::LocalAggregator);
       send(shared_state_.roles.global_aggregators.at(
                peer_index_ % shared_state_.roles.global_aggregators.size()),
-           std::make_shared<Message>(message));
+           message);
     }
     void sendSnark2(MessageSnark2 message) override {
       assert2(role() == Role::GlobalAggregator);
@@ -435,6 +493,9 @@ namespace beamsim::example {
       gossip_.start();
     }
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      if (onMessagePull(from_peer, any_message, nullptr)) {
+        return;
+      }
       gossip_.onMessage(
           from_peer,
           any_message,
@@ -443,6 +504,9 @@ namespace beamsim::example {
             if (auto *signature =
                     std::get_if<MessageSignature>(&message.variant)) {
               onMessageSignature(*signature, std::move(forward));
+            } else if (std::holds_alternative<MessageIhaveSnark1>(
+                           message.variant)) {
+              onMessagePull(from_peer, any_message, std::move(forward));
             } else if (auto *snark1 =
                            std::get_if<MessageSnark1>(&message.variant)) {
               onMessageSnark1(*snark1, std::move(forward));
@@ -459,8 +523,8 @@ namespace beamsim::example {
                          peer_index_)),
                      std::make_shared<Message>(message));
     }
-    void sendSnark1(MessageSnark1 message) override {
-      gossip_.gossip(topic_snark1, std::make_shared<Message>(message));
+    void sendSnark1(MessagePtr message) override {
+      gossip_.gossip(topic_snark1, message);
     }
     void sendSnark2(MessageSnark2 message) override {
       gossip_.gossip(topic_snark2, std::make_shared<Message>(message));
@@ -493,7 +557,16 @@ namespace beamsim::example {
 
     // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      if (onMessagePull(from_peer, any_message, nullptr)) {
+        return;
+      }
       auto grid_message = std::dynamic_pointer_cast<grid::Message>(any_message);
+      auto forward_snark1 = [this, from_peer, grid_message] {
+        forward(shared_state_.roles.aggregators,
+                shared_state_.roles.index_of_aggregators,
+                from_peer,
+                grid_message);
+      };
       auto &message = dynamic_cast<Message &>(*grid_message->message);
       if (not seen_.emplace(message.hash()).second) {
         return;
@@ -505,13 +578,11 @@ namespace beamsim::example {
                   from_peer,
                   grid_message);
         });
+      } else if (std::holds_alternative<MessageIhaveSnark1>(message.variant)) {
+        onMessagePull(
+            from_peer, grid_message->message, std::move(forward_snark1));
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
-        onMessageSnark1(*snark1, [this, from_peer, grid_message] {
-          forward(shared_state_.roles.aggregators,
-                  shared_state_.roles.index_of_aggregators,
-                  from_peer,
-                  grid_message);
-        });
+        onMessageSnark1(*snark1, std::move(forward_snark1));
       } else {
         auto &snark2 = std::get<MessageSnark2>(message.variant);
         onMessageSnark2(snark2, [this, from_peer, grid_message] {
@@ -529,10 +600,10 @@ namespace beamsim::example {
               group_.index_of_validators,
               std::make_shared<Message>(message));
     }
-    void sendSnark1(MessageSnark1 message) override {
+    void sendSnark1(MessagePtr message) override {
       publish(shared_state_.roles.aggregators,
               shared_state_.roles.index_of_aggregators,
-              std::make_shared<Message>(message));
+              message);
     }
     void sendSnark2(MessageSnark2 message) override {
       publish(shared_state_.roles.validators,
@@ -596,6 +667,7 @@ void run_simulation(const SimulationConfig &config) {
     beamsim::Stopwatch t_run;
     beamsim::example::SharedState shared_state{
         .roles = roles,
+        .snark1_pull = config.snark1_pull,
         .stop_on_create_snark1 = config.local_aggregation_only,
     };
 
