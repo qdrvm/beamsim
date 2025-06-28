@@ -217,6 +217,9 @@ namespace beamsim::example {
         return false;
       }
       if (auto *ihave = std::get_if<MessageIhaveSnark1>(&message->variant)) {
+        if (pulling_.contains(ihave->peer_indices)) {
+          return true;
+        }
         auto bits1 = pulling_max_.ones();
         pulling_max_.set(ihave->peer_indices);
         auto bits2 = pulling_max_.ones();
@@ -224,9 +227,7 @@ namespace beamsim::example {
           return true;
         }
         assert2(forward);
-        if (not pulling_.emplace(ihave->peer_indices, forward).second) {
-          return true;
-        }
+        pulling_.emplace(ihave->peer_indices, forward);
         send(from_peer,
              std::make_shared<Message>(
                  MessageIwantSnark1{std::move(ihave->peer_indices)}));
