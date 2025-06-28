@@ -25,6 +25,21 @@ def time_axis(items):
     return [x[0] for x in items]
 
 
+def get_snark1_sent(items):
+    rows = filter_report(items, "snark1_sent")
+    xs, ys = [0], [0]
+    groups = dict()
+    for t, _, g, n2 in rows:
+        assert t != 0
+        n1 = groups.get(g, 0)
+        if n2 <= n1:
+            continue
+        groups[g] = n2
+        xs.append(t)
+        ys.append(ys[-1] + (n2 - n1))
+    return xs, ys
+
+
 def get_snark1_received(items):
     rows = filter_report(items, "snark1_received")
     rows2 = list()

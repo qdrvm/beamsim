@@ -219,8 +219,10 @@ namespace beamsim::example {
       thread_.run(simulator_,
                   timeSeconds(received / consts().aggregation_rate_per_sec),
                   [this, snark1{std::move(snark1)}]() mutable {
-                    report(
-                        simulator_, "snark1_sent", snark1.peer_indices.ones());
+                    report(simulator_,
+                           "snark1_sent",
+                           group_index_,
+                           snark1.peer_indices.ones());
                     if (shared_state_.stop_on_create_snark1) {
                       shared_state_.done = true;
                       simulator_.stop();
