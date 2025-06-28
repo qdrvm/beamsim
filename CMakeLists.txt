@@ -35,16 +35,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(xxHash)
 
-add_executable(main main.cpp)
-target_include_directories(main PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(main yaml-cpp::yaml-cpp xxhash)
+add_executable(beamsim main.cpp)
+target_include_directories(beamsim PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(beamsim yaml-cpp::yaml-cpp xxhash)
 
 find_package(ns3 CONFIG)
 if(ns3_FOUND)
   find_package(MPI REQUIRED)
 
-  target_compile_definitions(main PRIVATE ns3_FOUND)
-  target_link_libraries(main
+  target_compile_definitions(beamsim PRIVATE ns3_FOUND)
+  target_link_libraries(beamsim
     ns3::applications
     ns3::core
     ns3::internet

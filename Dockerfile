@@ -1,5 +1,5 @@
 # Multi-stage build for BeamSim with dedicated NS-3 stage
-FROM ubuntu:24.04 AS ns3-builder
+FROM ubuntu:25.10 AS ns3-builder
 
 # Build arguments
 ARG NS3_VERSION=3.44
@@ -15,9 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Add LLVM apt repository for Clang (using variable)
-RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
-    && add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${CLANG_VERSION} main"
+# Add LLVM apt repository for Clang (using modern GPG key management)
+RUN mkdir -p /etc/apt/keyrings \
+    && wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /etc/apt/keyrings/llvm-snapshot.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/plucky/ llvm-toolchain-plucky-${CLANG_VERSION} main" > /etc/apt/sources.list.d/llvm.list
 
 # Install Clang and development tools (using variable)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -102,10 +103,11 @@ RUN cmake -G Ninja -B build \
     && ninja -C build -j$(nproc)
 
 # Runtime stage - minimal distroless-like image
-FROM ubuntu:24.04 AS beamsim-runtime
+FROM ubuntu:25.10 AS beamsim-runtime
 
 # Re-declare build args for runtime stage
 ARG NS3_VERSION=3.44
+ARG CLANG_VERSION=19
 
 # Add metadata labels
 LABEL maintainer="BeamSim Team" \
@@ -114,11 +116,21 @@ LABEL maintainer="BeamSim Team" \
       org.opencontainers.image.source="https://github.com/qdrvm/beamsim" \
       org.opencontainers.image.documentation="https://github.com/qdrvm/beamsim/README.md"
 
+# Add LLVM repository for runtime libc++ libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    gnupg \
+    ca-certificates \
+    && mkdir -p /etc/apt/keyrings \
+    && wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /etc/apt/keyrings/llvm-snapshot.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/plucky/ llvm-toolchain-plucky-${CLANG_VERSION} main" > /etc/apt/sources.list.d/llvm.list \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install runtime dependencies including Python for Jupyter
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libc++1 \
-    ca-certificates \
-    libopenmpi3 \
+    libc++1-${CLANG_VERSION} \
+    libc++abi1-${CLANG_VERSION} \
     libopenmpi-dev \
     python3 \
     python3-pip \
