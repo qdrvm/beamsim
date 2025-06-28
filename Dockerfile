@@ -114,12 +114,15 @@ LABEL maintainer="BeamSim Team" \
       org.opencontainers.image.source="https://github.com/qdrvm/beamsim" \
       org.opencontainers.image.documentation="https://github.com/qdrvm/beamsim/README.md"
 
-# Install only essential runtime dependencies for Clang/libc++
+# Install runtime dependencies including Python for Jupyter
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libc++1 \
     ca-certificates \
     libopenmpi3 \
     libopenmpi-dev \
+    python3 \
+    python3-pip \
+    python3-venv \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /tmp/* \
@@ -130,7 +133,7 @@ RUN groupadd -r beamsim -g 10001 \
     && useradd -r -u 10001 -g beamsim -m -d /home/beamsim -s /sbin/nologin beamsim
 
 # Copy binary from builder stage
-COPY --from=beamsim-builder --chown=beamsim:beamsim /build/build/main /usr/local/bin/beamsim
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/build/beamsim /usr/local/bin/beamsim
 
 # Copy NS-3 libraries from builder stage
 COPY --from=beamsim-builder --chown=root:root /build/external/ns-allinone-${NS3_VERSION}/install/lib/ /usr/local/lib/
@@ -138,15 +141,29 @@ COPY --from=beamsim-builder --chown=root:root /build/external/ns-allinone-${NS3_
 # Copy shadow-atlas.bin file from builder stage
 COPY --from=beamsim-builder --chown=beamsim:beamsim /build/shadow-atlas.bin /home/beamsim/shadow-atlas.bin
 
+# Copy Python files and notebook for Jupyter
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/beamsim.py /home/beamsim/beamsim.py
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/beamsim.ipynb /home/beamsim/beamsim.ipynb
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/requirements.txt /home/beamsim/requirements.txt
+COPY --from=beamsim-builder --chown=beamsim:beamsim /build/example.yaml /home/beamsim/example.yaml
+
 RUN chmod 755 /usr/local/bin/beamsim && ldconfig
+
+# Install Python packages including Jupyter
+USER root
+RUN pip3 install --no-cache-dir --break-system-packages jupyter numpy seaborn matplotlib pandas
+USER beamsim
 
 # Switch to non-root user
 USER beamsim
 WORKDIR /home/beamsim
 
+# Expose Jupyter port
+EXPOSE 8080
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD /usr/local/bin/beamsim --help > /dev/null || exit 1
 
-# Default command with explicit path
-CMD ["/usr/local/bin/beamsim", "--help"]
+# Default command starts Jupyter server
+CMD ["jupyter", "notebook", "--ip=0.0.0.0", "--port=8080", "--no-browser", "--NotebookApp.token=''", "--NotebookApp.password=''"]
