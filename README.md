@@ -28,7 +28,7 @@ BeamSim simulates validator networks with configurable group structures, support
 
 ## Building the Project
 
-### Docker Build (Recommended)
+### Docker Build
 
 The easiest way to build and run BeamSim is using Docker:
 
@@ -39,19 +39,10 @@ make docker_image
 # Test the build
 make docker_test
 
-# Run BeamSim in container
-docker run --rm qdrvm/beamsim/beamsim:$(git rev-parse --short=7 HEAD)-amd64
+
 ```
 
 For detailed Docker build configuration and options, see [`docs/BUILD.md`](docs/BUILD.md) and [`docs/MAKEFILE.md`](docs/MAKEFILE.md).
-
-### Local Build (without NS-3)
-
-```bash
-# Configure and build
-cmake -G Ninja -B build -D CMAKE_BUILD_TYPE=RelWithDebInfo
-ninja -C build
-```
 
 ### Local Build with NS-3 Support
 
@@ -144,6 +135,73 @@ The NS-3 setup script will:
 # Performance testing with queue backend
 ./build/main --backend queue --topology direct --groups 5 --group-validators 20
 ```
+
+## Jupyter Notebook Analysis
+
+BeamSim includes a comprehensive Jupyter notebook (`beamsim.ipynb`) for advanced simulation analysis and visualization. The notebook provides interactive plotting capabilities to analyze network performance across different topologies.
+
+### Prerequisites
+
+Install the required Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+This will install the necessary packages including:
+- `seaborn` for enhanced plotting
+- Other visualization and analysis libraries
+
+### Starting Jupyter Notebook
+
+1. **Navigate to the project directory**:
+   ```bash
+   cd /path/to/beamsim
+   ```
+
+2. **Start Jupyter Notebook**:
+   ```bash
+   jupyter notebook
+   ```
+
+3. **Open the analysis notebook**:
+   - In the Jupyter interface, click on `beamsim.ipynb`
+   - The notebook will open in a new tab
+
+### Notebook Features
+
+The notebook provides several analysis tools:
+
+- **SNARK Distribution Analysis**: Visualize how SNARK proofs are distributed across the network over time
+- **Network Traffic Analysis**: Monitor bandwidth usage by different node roles (validators, aggregators)
+- **Topology Comparison**: Compare performance metrics across different network topologies (direct, gossip, grid)
+- **Peak Traffic Analysis**: Identify network bottlenecks and peak usage patterns
+
+### Running Simulations from Notebook
+
+The notebook uses a YAML configuration file and supports the same parameters as the CLI:
+
+```python
+# Example: Run simulation with custom parameters
+run_kwargs = dict(
+    c=yaml_config_path,  # YAML configuration
+    g=10,                # Number of groups
+    gv=64,               # Validators per group
+    mpi=10,              # Enable MPI with 10 processes
+)
+
+# Generate comparison plots across topologies
+topologies = ["direct", "gossip", "grid"]
+plot1_topologies(topologies, **run_kwargs)
+```
+
+### Customizing Analysis
+
+You can modify the simulation parameters in the notebook to:
+- Test different network sizes
+- Compare various backend types
+- Analyze specific topology configurations
+- Generate custom visualizations
 
 ## Simulation Backends
 
