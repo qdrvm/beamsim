@@ -1,6 +1,7 @@
 import json
 import subprocess
 import os
+import warnings
 import numpy as np
 
 
@@ -92,6 +93,11 @@ run_exe_time = None
 def run(
     b=None, t=None, g=None, gv=None, shuffle=False, mpi=False, c=None, la=None, ga=None
 ):
+    if not isinstance(mpi, bool) and mpi > os.cpu_count():
+        warnings.warn(
+            f"beamsim.run requested mpi {mpi} exceeds os cpu count {os.cpu_count()}"
+        )
+        mpi = os.cpu_count()
     if c is None:
         if b is None:
             b = "ns3"
