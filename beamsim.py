@@ -3,6 +3,8 @@ import subprocess
 import os
 import warnings
 import numpy as np
+import tempfile
+import hashlib
 
 
 def parse_report(lines):
@@ -137,3 +139,19 @@ def run(
         output = subprocess.check_output(cmd, text=True)
         run_cache[key] = output
     return parse_report(output)
+
+
+yaml_dir = None
+
+
+def yaml(yaml: str):
+    global yaml_dir
+    if yaml_dir is None:
+        yaml_dir = os.path.join(tempfile.gettempdir(), "beamsim-yaml-md5")
+        os.makedirs(yaml_dir, exist_ok=True)
+    md5 = hashlib.md5(yaml.encode()).hexdigest()
+    path = os.path.join(yaml_dir, md5)
+    if not os.path.exists(path):
+        with open(path, "wb") as file:
+            file.write(yaml.encode())
+    return path
