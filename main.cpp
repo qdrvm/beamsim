@@ -162,6 +162,17 @@ namespace beamsim::example {
     PeerIndex snark2_received = 0;
     bool done = false;
 
+    PeerIndex snark1_threshold(const Roles::Group &group) const {
+      return group.validators.size() * consts().snark1_threshold;
+    }
+    PeerIndex plot_snark1_threshold() const {
+      PeerIndex sum = 0;
+      for (auto &group : roles.groups) {
+        sum += snark1_threshold(group);
+      }
+      return sum;
+    }
+
     PeerIndex snark2_threshold() const {
       return roles.validator_count * consts().snark2_threshold;
     }
@@ -208,8 +219,7 @@ namespace beamsim::example {
         return;
       }
       aggregating_snark1->peer_indices.set(message.peer_index);
-      PeerIndex threshold =
-          group_.validators.size() * consts().snark1_threshold;
+      PeerIndex threshold = shared_state_.snark1_threshold(group_);
       auto received = aggregating_snark1->peer_indices.ones();
       if (received < threshold) {
         return;
@@ -592,6 +602,7 @@ void run_simulation(const SimulationConfig &config) {
     beamsim::example::report(simulator,
                              "info",
                              roles.validator_count,
+                             shared_state.plot_snark1_threshold(),
                              shared_state.snark2_threshold());
     metrics.begin(simulator);
 
