@@ -5,9 +5,6 @@
 #include <beamsim/peer_index.hpp>
 
 namespace beamsim::gossip {
-  // hack
-  MessageDecodeFn message_decode;
-
   struct Publish {
     friend void encodeTo(MessageEncodeTo &to, const Publish &v) {
       encodeTo(to, v.topic_index);
@@ -17,7 +14,7 @@ namespace beamsim::gossip {
     friend void decodeFrom(MessageDecodeFrom &from, Publish &v) {
       decodeFrom(from, v.topic_index);
       decodeFrom(from, v.origin);
-      v.message = message_decode(from);
+      v.message = decodeMessage(from);
     }
 
     TopicIndex topic_index;
@@ -28,6 +25,7 @@ namespace beamsim::gossip {
   class Message : public IMessage {
    public:
     // IMessage
+    MESSAGE_TYPE_INDEX;
     MessageSize padding() const override {
       size_t padding = 0;
       for (auto &publish : this->publish) {
@@ -36,6 +34,7 @@ namespace beamsim::gossip {
       return padding;
     }
     void encode(MessageEncodeTo &to) const override {
+      IMessage::encode(to);
       encodeTo(to, publish);
       encodeTo(to, ihave);
       encodeTo(to, iwant);

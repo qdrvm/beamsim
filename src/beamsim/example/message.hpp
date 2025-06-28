@@ -62,6 +62,7 @@ namespace beamsim::example {
     Message(Variant variant) : variant{std::move(variant)} {}
 
     // IMessage
+    MESSAGE_TYPE_INDEX;
     MessageSize padding() const override {
       if (std::holds_alternative<MessageSignature>(variant)) {
         return consts().signature_size;
@@ -73,6 +74,7 @@ namespace beamsim::example {
       }
     }
     void encode(MessageEncodeTo &to) const override {
+      IMessage::encode(to);
       encodeTo(to, (uint8_t)variant.index());
       if (auto *signature = std::get_if<MessageSignature>(&variant)) {
         encodeTo(to, signature->peer_index);

@@ -696,22 +696,6 @@ void run_simulation(const SimulationConfig &config) {
           return roles.group_of_validator.at(i);
         });
       }
-      switch (config.topology) {
-        case SimulationConfig::Topology::DIRECT: {
-          simulator.message_decode_ = beamsim::example::Message::decode;
-          break;
-        }
-        case SimulationConfig::Topology::GOSSIP: {
-          beamsim::gossip::message_decode = beamsim::example::Message::decode;
-          simulator.message_decode_ = beamsim::gossip::Message::decode;
-          break;
-        }
-        case SimulationConfig::Topology::GRID: {
-          beamsim::grid::message_decode = beamsim::example::Message::decode;
-          simulator.message_decode_ = beamsim::grid::Message::decode;
-          break;
-        }
-      }
       run(simulator);
 #else
       abort();
@@ -729,6 +713,11 @@ int main(int argc, char **argv) {
     std::println("ns3 not found");
   }
 #endif
+
+  auto &types = beamsim::MessageTypeTable::get();
+  types.add<beamsim::example::Message>();
+  types.add<beamsim::gossip::Message>();
+  types.add<beamsim::grid::Message>();
 
   SimulationConfig config;
 

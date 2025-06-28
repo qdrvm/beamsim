@@ -2,10 +2,18 @@
 
 #include <xxhash.h>
 
+#include <beamsim/assert.hpp>
 #include <functional>
 #include <memory>
 #include <span>
 #include <type_traits>
+#include <typeindex>
+
+#define MESSAGE_TYPE_INDEX                                      \
+  MessageTypeIndex typeIndex() const override {                 \
+    return ::beamsim::MessageTypeTable::get().typeid_index_.at( \
+        typeid(std::remove_cvref_t<decltype(*this)>));          \
+  }
 
 namespace beamsim {
   class IMessage;
@@ -20,6 +28,23 @@ namespace beamsim {
   using BytesN = std::array<uint8_t, N>;
   using MessageDecodeFn = std::function<MessagePtr(MessageDecodeFrom &)>;
   using MessageForwardFn = std::function<void()>;
+  using MessageTypeIndex = uint8_t;
+
+  struct MessageTypeTable {
+    static auto &get() {
+      static MessageTypeTable table;
+      return table;
+    }
+
+    template <typename T>
+    void add() {
+      assert2(typeid_index_.emplace(typeid(T), typeid_index_.size()).second);
+      decode_.emplace_back(T::decode);
+    }
+
+    std::unordered_map<std::type_index, MessageTypeIndex> typeid_index_;
+    std::vector<MessageDecodeFn> decode_;
+  };
 
   struct MessageEncodeTo {
     std::function<void(BytesIn)> f;
@@ -118,8 +143,11 @@ namespace beamsim {
    public:
     virtual ~IMessage() = default;
 
+    virtual MessageTypeIndex typeIndex() const = 0;
     virtual MessageSize padding() const = 0;
-    virtual void encode(MessageEncodeTo &to) const = 0;
+    virtual void encode(MessageEncodeTo &to) const {
+      encodeTo(to, typeIndex());
+    }
 
     MessageSize dataSize() const {
       size_t size = 0;
@@ -142,4 +170,9 @@ namespace beamsim {
       return hasher.hash();
     }
   };
+
+  inline MessagePtr decodeMessage(MessageDecodeFrom &from) {
+    return MessageTypeTable::get().decode_.at(from.get<MessageTypeIndex>())(
+        from);
+  }
 }  // namespace beamsim

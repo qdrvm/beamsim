@@ -3,9 +3,6 @@
 #include <beamsim/message.hpp>
 
 namespace beamsim::grid {
-  // hack
-  MessageDecodeFn message_decode;
-
   using Ttl = uint8_t;
 
   class Message : public IMessage {
@@ -15,17 +12,19 @@ namespace beamsim::grid {
         : message{std::move(message)}, ttl{ttl} {}
 
     // IMessage
+    MESSAGE_TYPE_INDEX;
     MessageSize padding() const override {
       return message->padding();
     }
     void encode(MessageEncodeTo &to) const override {
+      IMessage::encode(to);
       encodeTo(to, ttl);
       message->encode(to);
     }
     static MessagePtr decode(MessageDecodeFrom &from) {
       auto message = std::make_shared<Message>();
       decodeFrom(from, message->ttl);
-      message->message = message_decode(from);
+      message->message = decodeMessage(from);
       return message;
     }
 
