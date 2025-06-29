@@ -1,8 +1,8 @@
 #pragma once
 
-#include <beamsim/gossip/topic_index.hpp>
 #include <beamsim/message.hpp>
 #include <beamsim/peer_index.hpp>
+#include <beamsim/topic_index.hpp>
 
 namespace beamsim::gossip {
   struct Publish {
