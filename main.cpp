@@ -734,7 +734,9 @@ void run_simulation(const SimulationConfig &config) {
                     roles.groups.at(group_index).validators);
         }
         subscribe(beamsim::example::topic_snark1, snark1_group);
-        subscribe(beamsim::example::topic_snark2, roles.validators);
+        if (not beamsim::example::kStopOnCreateSnark2) {
+          subscribe(beamsim::example::topic_snark2, roles.validators);
+        }
         break;
       }
       case SimulationConfig::Topology::GRID: {
@@ -770,7 +772,9 @@ void run_simulation(const SimulationConfig &config) {
         subscribe(beamsim::example::topic_snark1,
                   snark1_group,
                   &index_of_snark1_group);
-        subscribe(beamsim::example::topic_snark2, roles.validators, nullptr);
+        if (not beamsim::example::kStopOnCreateSnark2) {
+          subscribe(beamsim::example::topic_snark2, roles.validators, nullptr);
+        }
         break;
       }
     }
