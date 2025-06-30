@@ -107,19 +107,34 @@ namespace beamsim::example {
     }
     static MessagePtr decode(MessageDecodeFrom &from) {
       auto i = from.get<uint8_t>();
-      if (i == 0) {
-        MessageSignature signature;
-        decodeFrom(from, signature.peer_index);
-        return std::make_shared<Message>(std::move(signature));
-      } else if (i == 1) {
-        MessageSnark1 snark1;
-        decodeFrom(from, snark1.peer_indices);
-        return std::make_shared<Message>(std::move(snark1));
-      } else {
-        MessageSnark2 snark2;
-        decodeFrom(from, snark2.peer_indices);
-        return std::make_shared<Message>(std::move(snark2));
+      switch (i) {
+        case 0: {
+          MessageSignature signature;
+          decodeFrom(from, signature.peer_index);
+          return std::make_shared<Message>(std::move(signature));
+        }
+        case 1: {
+          MessageIhaveSnark1 ihave;
+          decodeFrom(from, ihave.peer_indices);
+          return std::make_shared<Message>(std::move(ihave));
+        }
+        case 2: {
+          MessageIwantSnark1 iwant;
+          decodeFrom(from, iwant.peer_indices);
+          return std::make_shared<Message>(std::move(iwant));
+        }
+        case 3: {
+          MessageSnark1 snark1;
+          decodeFrom(from, snark1.peer_indices);
+          return std::make_shared<Message>(std::move(snark1));
+        }
+        case 4: {
+          MessageSnark2 snark2;
+          decodeFrom(from, snark2.peer_indices);
+          return std::make_shared<Message>(std::move(snark2));
+        }
       }
+      abort();
     }
 
     Variant variant;
