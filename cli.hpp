@@ -406,6 +406,18 @@ struct SimulationConfig {
       shuffle,
       "shuffle validators from same group to different routers",
   }};
+  bool snark1_pull = false;
+  Args::FlagBool flag_snark1_pull{{
+      {"--snark1-pull"},
+      snark1_pull,
+      "broadcast bitfield instead of snark1",
+  }};
+  bool snark1_half_direct = false;
+  Args::FlagBool flag_snark1_half_direct{{
+      {"--snark1-half-direct"},
+      snark1_half_direct,
+      "don't send snark1 to local aggregators",
+  }};
   bool local_aggregation_only = false;
   Args::FlagBool flag_local_aggregation_only{{
       {"--local-aggregation-only"},
@@ -443,6 +455,8 @@ struct SimulationConfig {
              flag_group_count,
              flag_validators_per_group,
              flag_shuffle,
+             flag_snark1_pull,
+             flag_snark1_half_direct,
              flag_local_aggregation_only,
              flag_gml_path,
              flag_report,
@@ -487,6 +501,8 @@ struct SimulationConfig {
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
     yaml.at({"shuffle"}).get(shuffle);
+    yaml.at({"snark1_pull"}).get(snark1_pull);
+    yaml.at({"snark1_half_direct"}).get(snark1_half_direct);
 
     yaml.at({"random_seed"}).get(random_seed);
 
