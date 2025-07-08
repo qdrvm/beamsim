@@ -418,6 +418,12 @@ struct SimulationConfig {
       snark1_half_direct,
       "don't send snark1 to local aggregators",
   }};
+  bool signature_direct = false;
+  Args::FlagBool flag_signature_direct{{
+      {"--signature-direct"},
+      signature_direct,
+      "don't send snark1 to local aggregators",
+  }};
   bool local_aggregation_only = false;
   Args::FlagBool flag_local_aggregation_only{{
       {"--local-aggregation-only"},
@@ -457,6 +463,7 @@ struct SimulationConfig {
              flag_shuffle,
              flag_snark1_pull,
              flag_snark1_half_direct,
+             flag_signature_direct,
              flag_local_aggregation_only,
              flag_gml_path,
              flag_report,
@@ -503,6 +510,7 @@ struct SimulationConfig {
     yaml.at({"shuffle"}).get(shuffle);
     yaml.at({"snark1_pull"}).get(snark1_pull);
     yaml.at({"snark1_half_direct"}).get(snark1_half_direct);
+    yaml.at({"signature_direct"}).get(signature_direct);
 
     yaml.at({"random_seed"}).get(random_seed);
 
