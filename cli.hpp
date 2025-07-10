@@ -262,6 +262,8 @@ struct Yaml {
       std::string_view suffix(r.ptr, end - r.ptr);
       if (suffix == "ms") {
         value = std::chrono::milliseconds{count};
+      } else if (suffix == "us") {
+        value = std::chrono::microseconds{count};
       } else {
         error();
       }
