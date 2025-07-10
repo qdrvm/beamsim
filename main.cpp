@@ -694,7 +694,7 @@ void run_simulation(const SimulationConfig &config) {
       exit(EXIT_FAILURE);
     }
     auto gml = beamsim::Gml::decode(file.data);
-    routers = beamsim::Routers::make(random, roles, gml);
+    routers = beamsim::Routers::make(random, roles, gml, config.gml_bitrate);
   } else if (config.direct_router) {
     routers = beamsim::Routers::make(random, roles, *config.direct_router);
   } else {

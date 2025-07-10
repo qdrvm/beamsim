@@ -439,6 +439,7 @@ struct SimulationConfig {
       gml_path,
       "bin gml path",
   }};
+  uint64_t gml_bitrate = 0;
   uint32_t random_seed = 0;
   bool report = false;
   Args::FlagBool flag_report{
@@ -552,6 +553,7 @@ struct SimulationConfig {
       range("delay", config.delay);
     }
     yaml.at({"network", "gml"}).get(gml_path);
+    yaml.at({"network", "gml_bitrate"}).get(gml_bitrate);
 
     yaml.checkUnknown();
   }
