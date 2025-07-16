@@ -148,7 +148,8 @@ namespace beamsim {
 
     static Routers make(Random &random,
                         const example::Roles &roles,
-                        const Gml &gml) {
+                        const Gml &gml,
+                        uint64_t gml_bitrate) {
       Routers routers;
       auto g = gml.nodes.size();
       // TODO: shuffle
@@ -167,7 +168,9 @@ namespace beamsim {
         auto n2 = i2 % g;
         auto &node1 = gml.nodes.at(n1);
         auto &node2 = gml.nodes.at(n2);
-        uint64_t bitrate = std::min(node1.bitrate(), node2.bitrate());
+        uint64_t bitrate = gml_bitrate != 0
+                             ? gml_bitrate
+                             : std::min(node1.bitrate(), node2.bitrate());
         uint32_t delay_ms = 0;
         if (i1 < g) {
           delay_ms = gml.latency_us.at(i1, i2) / 1000;

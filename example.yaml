@@ -1,6 +1,8 @@
 backend: ns3-direct
 topology: direct
 shuffle: false
+snark1_pull: false
+snark1_half_direct: false
 
 random_seed: 0
 
@@ -33,3 +35,4 @@ network:
     delay:
       min: 10ms
       max: 100ms
+  # gml: "shadow-atlas.bin"

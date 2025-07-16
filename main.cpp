@@ -2,8 +2,8 @@
 #include <beamsim/example/roles.hpp>
 #include <beamsim/gossip/generate.hpp>
 #include <beamsim/gossip/peer.hpp>
-#include <beamsim/grid/grid.hpp>
 #include <beamsim/grid/message.hpp>
+#include <beamsim/grid/topic.hpp>
 #include <beamsim/mmap.hpp>
 #include <beamsim/network.hpp>
 #include <beamsim/simulator.hpp>
@@ -158,6 +158,9 @@ namespace beamsim::example {
 
   struct SharedState {
     const Roles &roles;
+    bool snark1_pull;
+    bool snark1_half_direct;
+    bool signature_direct;
     bool stop_on_create_snark1;
     PeerIndex snark2_received = 0;
     bool done = false;
@@ -175,6 +178,35 @@ namespace beamsim::example {
 
     PeerIndex snark2_threshold() const {
       return roles.validator_count * consts().snark2_threshold;
+    }
+
+    PeerIndex directSnark1(PeerIndex from_peer) const {
+      return roles.global_aggregators.at(from_peer
+                                         % roles.global_aggregators.size());
+    }
+    void directSignature(PeerIndex from_peer, const auto &f) const {
+      auto &group = roles.groups.at(roles.group_of_validator.at(from_peer));
+      if (roles.roles.at(from_peer) == Role::LocalAggregator) {
+        for (auto &to_peer : group.local_aggregators) {
+          if (to_peer == from_peer) {
+            continue;
+          }
+          f(to_peer);
+        }
+      } else {
+        f(group.local_aggregators.at(group.index_of_validators.at(from_peer)
+                                     % group.local_aggregators.size()));
+      }
+    }
+    void connectHalfDirect(ISimulator &simulator) const {
+      if (not snark1_half_direct) {
+        return;
+      }
+      for (auto &group : roles.groups) {
+        for (auto &from_peer : group.local_aggregators) {
+          simulator.connect(from_peer, directSnark1(from_peer));
+        }
+      }
     }
   };
 
@@ -197,14 +229,77 @@ namespace beamsim::example {
       thread_.run(simulator_, consts().signature_time, [this] {
         MessageSignature signature{peer_index_};
         _onMessageSignature(signature);
-        sendSignature(std::move(signature));
+        sendSignature(std::make_shared<Message>(std::move(signature)));
       });
     }
 
-    virtual void sendSignature(MessageSignature message) = 0;
-    virtual void sendSnark1(MessageSnark1 message) = 0;
+    virtual void sendSignature(MessagePtr message) = 0;
+    virtual void sendSnark1(MessagePtr message) = 0;
     virtual void sendSnark2(MessageSnark2 message) = 0;
 
+    bool onMessagePull(PeerIndex from_peer,
+                       const MessagePtr &any_message,
+                       MessageForwardFn forward) {
+      auto *message = dynamic_cast<const Message *>(any_message.get());
+      if (not message) {
+        return false;
+      }
+      if (shared_state_.signature_direct) {
+        if (auto *signature =
+                std::get_if<MessageSignature>(&message->variant)) {
+          onMessageSignature(*signature,
+                             forwardSignatureDirect(from_peer, any_message));
+          return true;
+        }
+      }
+      auto snark1_direct =
+          shared_state_.snark1_half_direct
+          and shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator;
+      if (not shared_state_.snark1_pull and not snark1_direct) {
+        return false;
+      }
+      if (auto *ihave = std::get_if<MessageIhaveSnark1>(&message->variant)) {
+        if (pulling_.contains(ihave->peer_indices)) {
+          return true;
+        }
+        auto bits1 = pulling_max_.ones();
+        pulling_max_.set(ihave->peer_indices);
+        auto bits2 = pulling_max_.ones();
+        if (bits2 <= bits1) {
+          return true;
+        }
+        if (snark1_direct) {
+          forward = [this, any_message] { sendSnark1(any_message); };
+        }
+        assert2(forward);
+        pulling_.emplace(ihave->peer_indices, forward);
+        send(from_peer,
+             std::make_shared<Message>(
+                 MessageIwantSnark1{std::move(ihave->peer_indices)}));
+        return true;
+      }
+      if (auto *iwant = std::get_if<MessageIwantSnark1>(&message->variant)) {
+        assert2(snark1_cache_.contains(iwant->peer_indices));
+        send(from_peer,
+             std::make_shared<Message>(
+                 MessageSnark1{std::move(iwant->peer_indices)}));
+        return true;
+      }
+      if (auto *snark1 = std::get_if<MessageSnark1>(&message->variant)) {
+        MessageForwardFn forward;
+        if (shared_state_.snark1_pull) {
+          forward = std::exchange(pulling_.at(snark1->peer_indices), {});
+          assert2(forward);
+          snark1_cache_.emplace(snark1->peer_indices);
+        } else {
+          assert2(snark1_direct);
+          forward = [this, any_message] { sendSnark1(any_message); };
+        }
+        onMessageSnark1(*snark1, std::move(forward));
+        return true;
+      }
+      return false;
+    }
     void onMessageSignature(const MessageSignature &message,
                             MessageForwardFn forward) {
       thread_.run(simulator_,
@@ -239,7 +334,13 @@ namespace beamsim::example {
                       return;
                     }
                     _onMessageSnark1(snark1);
-                    sendSnark1(std::move(snark1));
+                    if (shared_state_.snark1_pull) {
+                      sendSnark1(std::make_shared<Message>(
+                          MessageIhaveSnark1{snark1.peer_indices}));
+                      snark1_cache_.emplace(std::move(snark1.peer_indices));
+                    } else {
+                      sendSnark1(std::make_shared<Message>(std::move(snark1)));
+                    }
                   });
     }
     void onMessageSnark1(const MessageSnark1 &message,
@@ -306,9 +407,40 @@ namespace beamsim::example {
       shared_state_.done = true;
       simulator_.stop();
     }
+    bool snark1HalfDirect(const MessagePtr &message) {
+      if (not shared_state_.snark1_half_direct
+          or role() != Role::LocalAggregator) {
+        return false;
+      }
+      send(shared_state_.directSnark1(peer_index_), message);
+      return true;
+    }
+    bool signatureDirect(const MessagePtr &message) {
+      if (not shared_state_.signature_direct) {
+        return false;
+      }
+      shared_state_.directSignature(
+          peer_index_, [&](PeerIndex to_peer) { send(to_peer, message); });
+      return true;
+    }
 
     Role role() const {
       return shared_state_.roles.roles.at(peer_index_);
+    }
+    MessageForwardFn forwardSignatureDirect(PeerIndex from_peer,
+                                            MessagePtr any_message) {
+      return [this, from_peer, any_message] {
+        // local aggregator forwards signature from validator to local aggregators
+        if (shared_state_.roles.roles.at(from_peer) != Role::LocalAggregator
+            and role() == Role::LocalAggregator) {
+          for (auto &to_peer : group_.local_aggregators) {
+            if (to_peer == peer_index_) {
+              continue;
+            }
+            send(to_peer, any_message);
+          }
+        }
+      };
     }
 
     SharedState &shared_state_;
@@ -319,6 +451,9 @@ namespace beamsim::example {
     // TODO: remove when aggregating multiple times
     size_t snark1_received = 0;
     std::optional<MessageSnark2> aggregating_snark2;
+    std::unordered_set<BitSet> snark1_cache_;
+    std::unordered_map<BitSet, MessageForwardFn> pulling_;
+    BitSet pulling_max_;
     Thread thread_;
   };
 
@@ -348,33 +483,29 @@ namespace beamsim::example {
 
     // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      auto forward_snark1 = [this, from_peer, any_message] {
+        // global aggregator forwards snark1 from local aggregator to global aggregators
+        if (shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator
+            and role() == Role::GlobalAggregator) {
+          for (auto &to_peer : shared_state_.roles.global_aggregators) {
+            if (to_peer == peer_index_) {
+              continue;
+            }
+            send(to_peer, any_message);
+          }
+        }
+      };
+      if (onMessagePull(from_peer, any_message, forward_snark1)) {
+        return;
+      }
       auto &message = dynamic_cast<Message &>(*any_message);
       if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
-        onMessageSignature(*signature, [this, from_peer, any_message] {
-          // local aggregator forwards signature from validator to local aggregators
-          if (shared_state_.roles.roles.at(from_peer) != Role::LocalAggregator
-              and role() == Role::LocalAggregator) {
-            for (auto &to_peer : group_.local_aggregators) {
-              if (to_peer == peer_index_) {
-                continue;
-              }
-              send(to_peer, any_message);
-            }
-          }
-        });
+        onMessageSignature(*signature,
+                           forwardSignatureDirect(from_peer, any_message));
+      } else if (std::holds_alternative<MessageIhaveSnark1>(message.variant)) {
+        onMessagePull(from_peer, any_message, std::move(forward_snark1));
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
-        onMessageSnark1(*snark1, [this, from_peer, any_message] {
-          // global aggregator forwards snark1 from local aggregator to global aggregators
-          if (shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator
-              and role() == Role::GlobalAggregator) {
-            for (auto &to_peer : shared_state_.roles.global_aggregators) {
-              if (to_peer == peer_index_) {
-                continue;
-              }
-              send(to_peer, any_message);
-            }
-          }
-        });
+        onMessageSnark1(*snark1, std::move(forward_snark1));
       } else {
         auto &snark2 = std::get<MessageSnark2>(message.variant);
         onMessageSnark2(snark2, [] {
@@ -385,27 +516,22 @@ namespace beamsim::example {
     }
 
     // PeerBase
-    void sendSignature(MessageSignature message) override {
-      auto any_message = std::make_shared<Message>(message);
+    void sendSignature(MessagePtr message) override {
+      shared_state_.directSignature(
+          peer_index_, [&](PeerIndex to_peer) { send(to_peer, message); });
+    }
+    void sendSnark1(MessagePtr message) override {
       if (role() == Role::LocalAggregator) {
-        for (auto &to_peer : group_.local_aggregators) {
+        send(shared_state_.directSnark1(peer_index_), message);
+      } else {
+        assert2(role() == Role::GlobalAggregator);
+        for (auto &to_peer : shared_state_.roles.global_aggregators) {
           if (to_peer == peer_index_) {
             continue;
           }
-          send(to_peer, any_message);
+          send(to_peer, message);
         }
-      } else {
-        send(group_.local_aggregators.at(
-                 group_.index_of_validators.at(peer_index_)
-                 % group_.local_aggregators.size()),
-             any_message);
       }
-    }
-    void sendSnark1(MessageSnark1 message) override {
-      assert2(role() == Role::LocalAggregator);
-      send(shared_state_.roles.global_aggregators.at(
-               peer_index_ % shared_state_.roles.global_aggregators.size()),
-           std::make_shared<Message>(message));
     }
     void sendSnark2(MessageSnark2 message) override {
       assert2(role() == Role::GlobalAggregator);
@@ -415,9 +541,9 @@ namespace beamsim::example {
     }
   };
 
-  constexpr gossip::TopicIndex topic_snark1 = 0;
-  constexpr gossip::TopicIndex topic_snark2 = 1;
-  inline gossip::TopicIndex topicSignature(GroupIndex group_index) {
+  constexpr TopicIndex topic_snark1 = 0;
+  constexpr TopicIndex topic_snark2 = 1;
+  inline TopicIndex topicSignature(GroupIndex group_index) {
     return 2 + group_index;
   }
 
@@ -435,6 +561,9 @@ namespace beamsim::example {
       gossip_.start();
     }
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      if (onMessagePull(from_peer, any_message, nullptr)) {
+        return;
+      }
       gossip_.onMessage(
           from_peer,
           any_message,
@@ -443,6 +572,9 @@ namespace beamsim::example {
             if (auto *signature =
                     std::get_if<MessageSignature>(&message.variant)) {
               onMessageSignature(*signature, std::move(forward));
+            } else if (std::holds_alternative<MessageIhaveSnark1>(
+                           message.variant)) {
+              onMessagePull(from_peer, any_message, std::move(forward));
             } else if (auto *snark1 =
                            std::get_if<MessageSnark1>(&message.variant)) {
               onMessageSnark1(*snark1, std::move(forward));
@@ -454,13 +586,19 @@ namespace beamsim::example {
     }
 
     // PeerBase
-    void sendSignature(MessageSignature message) override {
+    void sendSignature(MessagePtr message) override {
+      if (signatureDirect(message)) {
+        return;
+      }
       gossip_.gossip(topicSignature(shared_state_.roles.group_of_validator.at(
                          peer_index_)),
-                     std::make_shared<Message>(message));
+                     std::move(message));
     }
-    void sendSnark1(MessageSnark1 message) override {
-      gossip_.gossip(topic_snark1, std::make_shared<Message>(message));
+    void sendSnark1(MessagePtr message) override {
+      if (snark1HalfDirect(message)) {
+        return;
+      }
+      gossip_.gossip(topic_snark1, message);
     }
     void sendSnark2(MessageSnark2 message) override {
       gossip_.gossip(topic_snark2, std::make_shared<Message>(message));
@@ -473,84 +611,60 @@ namespace beamsim::example {
    public:
     using PeerBase::PeerBase;
 
-    static void connect(ISimulator &simulator, const Roles &roles) {
-      for (PeerIndex i1 = 0; i1 < roles.validator_count; ++i1) {
-        auto &group = roles.groups.at(roles.group_of_validator.at(i1));
-        auto connect = [&](const std::vector<PeerIndex> &peers,
-                           auto &index_of) {
-          auto peer = index_of.at(i1);
-          grid::Grid(peers.size()).publishTo(peer, [&](PeerIndex i2) {
-            simulator.connect(i1, peers.at(i2));
-          });
-        };
-        connect(group.validators, group.index_of_validators);
-        if (roles.roles.at(i1) != Role::Validator) {
-          connect(roles.aggregators, roles.index_of_aggregators);
-        }
-        connect(roles.validators, roles.validators);
-      }
-    }
-
     // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      if (onMessagePull(from_peer, any_message, nullptr)) {
+        return;
+      }
       auto grid_message = std::dynamic_pointer_cast<grid::Message>(any_message);
+      auto forward_snark1 = [this, from_peer, grid_message] {
+        forward(topic_snark1, from_peer, grid_message);
+      };
       auto &message = dynamic_cast<Message &>(*grid_message->message);
       if (not seen_.emplace(message.hash()).second) {
         return;
       }
       if (auto *signature = std::get_if<MessageSignature>(&message.variant)) {
         onMessageSignature(*signature, [this, from_peer, grid_message] {
-          forward(group_.validators,
-                  group_.index_of_validators,
-                  from_peer,
-                  grid_message);
+          forward(topicSignature(group_index_), from_peer, grid_message);
         });
+      } else if (std::holds_alternative<MessageIhaveSnark1>(message.variant)) {
+        onMessagePull(
+            from_peer, grid_message->message, std::move(forward_snark1));
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&message.variant)) {
-        onMessageSnark1(*snark1, [this, from_peer, grid_message] {
-          forward(shared_state_.roles.aggregators,
-                  shared_state_.roles.index_of_aggregators,
-                  from_peer,
-                  grid_message);
-        });
+        onMessageSnark1(*snark1, std::move(forward_snark1));
       } else {
         auto &snark2 = std::get<MessageSnark2>(message.variant);
         onMessageSnark2(snark2, [this, from_peer, grid_message] {
-          forward(shared_state_.roles.validators,
-                  shared_state_.roles.validators,
-                  from_peer,
-                  grid_message);
+          forward(topic_snark2, from_peer, grid_message);
         });
       }
     }
 
     // PeerBase
-    void sendSignature(MessageSignature message) override {
-      publish(group_.validators,
-              group_.index_of_validators,
-              std::make_shared<Message>(message));
+    void sendSignature(MessagePtr message) override {
+      if (signatureDirect(message)) {
+        return;
+      }
+      publish(topicSignature(group_index_), std::move(message));
     }
-    void sendSnark1(MessageSnark1 message) override {
-      publish(shared_state_.roles.aggregators,
-              shared_state_.roles.index_of_aggregators,
-              std::make_shared<Message>(message));
+    void sendSnark1(MessagePtr message) override {
+      if (snark1HalfDirect(message)) {
+        return;
+      }
+      publish(topic_snark1, message);
     }
     void sendSnark2(MessageSnark2 message) override {
-      publish(shared_state_.roles.validators,
-              shared_state_.roles.validators,
-              std::make_shared<Message>(message));
+      publish(topic_snark2, std::make_shared<Message>(message));
     }
 
-    void publish(const std::vector<PeerIndex> &peers,
-                 auto &index_of,
-                 MessagePtr message) {
+    void publish(TopicIndex topic_index, MessagePtr message) {
       auto grid_message = std::make_shared<grid::Message>(message, 2);
-      auto peer = index_of.at(peer_index_);
-      grid::Grid(peers.size()).publishTo(peer, [&](PeerIndex i) {
-        send(peers.at(i), grid_message);
+      topics_.at(topic_index).publishTo(peer_index_, [&](PeerIndex to_peer) {
+        send(to_peer, grid_message);
       });
     }
-    void forward(const std::vector<PeerIndex> &peers,
-                 auto &index_of,
+    void forward(TopicIndex topic_index,
                  PeerIndex from_peer,
                  std::shared_ptr<grid::Message> message) {
       if (message->ttl <= 1) {
@@ -558,13 +672,13 @@ namespace beamsim::example {
       }
       auto message2 =
           std::make_shared<grid::Message>(message->message, message->ttl - 1);
-      auto peer = index_of.at(peer_index_);
-      grid::Grid(peers.size())
-          .forwardTo(index_of.at(from_peer), peer, [&](PeerIndex i) {
-            send(peers.at(i), message2);
+      topics_.at(topic_index)
+          .forwardTo(from_peer, peer_index_, [&](PeerIndex to_peer) {
+            send(to_peer, message2);
           });
     }
 
+    std::unordered_map<TopicIndex, grid::Topic> topics_;
     std::unordered_set<MessageHash> seen_;
   };
 }  // namespace beamsim::example
@@ -580,7 +694,7 @@ void run_simulation(const SimulationConfig &config) {
       exit(EXIT_FAILURE);
     }
     auto gml = beamsim::Gml::decode(file.data);
-    routers = beamsim::Routers::make(random, roles, gml);
+    routers = beamsim::Routers::make(random, roles, gml, config.gml_bitrate);
   } else if (config.direct_router) {
     routers = beamsim::Routers::make(random, roles, *config.direct_router);
   } else {
@@ -596,6 +710,9 @@ void run_simulation(const SimulationConfig &config) {
     beamsim::Stopwatch t_run;
     beamsim::example::SharedState shared_state{
         .roles = roles,
+        .snark1_pull = config.snark1_pull,
+        .snark1_half_direct = config.snark1_half_direct,
+        .signature_direct = config.signature_direct,
         .stop_on_create_snark1 = config.local_aggregation_only,
     };
 
@@ -606,6 +723,20 @@ void run_simulation(const SimulationConfig &config) {
                              shared_state.snark2_threshold());
     metrics.begin(simulator);
 
+    if (config.topology == SimulationConfig::Topology::DIRECT
+        or config.signature_direct) {
+      for (size_t i = 0; i < roles.validator_count; ++i) {
+        shared_state.directSignature(i, [&](beamsim::PeerIndex to_peer) {
+          simulator.connect(i, to_peer);
+        });
+      }
+    }
+    shared_state.connectHalfDirect(simulator);
+    auto [snark1_group, index_of_snark1_group] =
+        shared_state.snark1_half_direct
+            ? std::tie(roles.global_aggregators,
+                       roles.index_of_global_aggregators)
+            : std::tie(roles.aggregators, roles.index_of_aggregators);
     switch (config.topology) {
       case SimulationConfig::Topology::DIRECT: {
         simulator.template addPeers<beamsim::example::PeerDirect>(
@@ -617,7 +748,7 @@ void run_simulation(const SimulationConfig &config) {
         simulator.template addPeers<beamsim::example::PeerGossip>(
             roles.validator_count, shared_state, random);
 
-        auto subscribe = [&](beamsim::gossip::TopicIndex topic_index,
+        auto subscribe = [&](beamsim::TopicIndex topic_index,
                              const std::vector<beamsim::PeerIndex> &peers) {
           auto views =
               beamsim::gossip::generate(random, config.gossip_config, peers);
@@ -641,14 +772,48 @@ void run_simulation(const SimulationConfig &config) {
           subscribe(beamsim::example::topicSignature(group_index),
                     roles.groups.at(group_index).validators);
         }
-        subscribe(beamsim::example::topic_snark1, roles.aggregators);
-        subscribe(beamsim::example::topic_snark2, roles.validators);
+        subscribe(beamsim::example::topic_snark1, snark1_group);
+        if (not beamsim::example::kStopOnCreateSnark2) {
+          subscribe(beamsim::example::topic_snark2, roles.validators);
+        }
         break;
       }
       case SimulationConfig::Topology::GRID: {
         simulator.template addPeers<beamsim::example::PeerGrid>(
             roles.validator_count, shared_state);
-        beamsim::example::PeerGrid::connect(simulator, roles);
+
+        auto subscribe = [&](beamsim::TopicIndex topic_index,
+                             const std::vector<beamsim::PeerIndex> &peers,
+                             const beamsim::example::IndexOfPeerMap *index_of) {
+          for (size_t i = 0; i < peers.size(); ++i) {
+            auto &peer_index = peers.at(i);
+            beamsim::grid::Topic topic{peers, index_of};
+            topic.publishTo(peer_index, [&](beamsim::PeerIndex to_peer) {
+              simulator.connect(peer_index, to_peer);
+            });
+            if (not simulator.isLocalPeer(peer_index)) {
+              continue;
+            }
+            dynamic_cast<beamsim::example::PeerGrid &>(
+                simulator.peer(peer_index))
+                .topics_.emplace(topic_index, topic);
+          }
+        };
+
+        for (beamsim::example::GroupIndex group_index = 0;
+             group_index < roles.groups.size();
+             ++group_index) {
+          auto &group = roles.groups.at(group_index);
+          subscribe(beamsim::example::topicSignature(group_index),
+                    group.validators,
+                    &group.index_of_validators);
+        }
+        subscribe(beamsim::example::topic_snark1,
+                  snark1_group,
+                  &index_of_snark1_group);
+        if (not beamsim::example::kStopOnCreateSnark2) {
+          subscribe(beamsim::example::topic_snark2, roles.validators, nullptr);
+        }
         break;
       }
     }
@@ -696,22 +861,6 @@ void run_simulation(const SimulationConfig &config) {
           return roles.group_of_validator.at(i);
         });
       }
-      switch (config.topology) {
-        case SimulationConfig::Topology::DIRECT: {
-          simulator.message_decode_ = beamsim::example::Message::decode;
-          break;
-        }
-        case SimulationConfig::Topology::GOSSIP: {
-          beamsim::gossip::message_decode = beamsim::example::Message::decode;
-          simulator.message_decode_ = beamsim::gossip::Message::decode;
-          break;
-        }
-        case SimulationConfig::Topology::GRID: {
-          beamsim::grid::message_decode = beamsim::example::Message::decode;
-          simulator.message_decode_ = beamsim::grid::Message::decode;
-          break;
-        }
-      }
       run(simulator);
 #else
       abort();
@@ -729,6 +878,11 @@ int main(int argc, char **argv) {
     std::println("ns3 not found");
   }
 #endif
+
+  auto &types = beamsim::MessageTypeTable::get();
+  types.add<beamsim::example::Message>();
+  types.add<beamsim::gossip::Message>();
+  types.add<beamsim::grid::Message>();
 
   SimulationConfig config;
 

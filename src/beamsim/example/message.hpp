@@ -3,6 +3,7 @@
 #include <beamsim/consts.hpp>
 #include <beamsim/message.hpp>
 #include <beamsim/peer_index.hpp>
+#include <beamsim/std_hash.hpp>
 #include <bit>
 #include <variant>
 #include <vector>
@@ -40,6 +41,8 @@ namespace beamsim::example {
       return n;
     }
 
+    bool operator==(const BitSet &) const = default;
+
     using Limb = uint8_t;
     static constexpr size_t limb_bits = 8 * sizeof(Limb);
     std::vector<Limb> limbs_;
@@ -47,6 +50,12 @@ namespace beamsim::example {
 
   struct MessageSignature {
     PeerIndex peer_index;
+  };
+  struct MessageIhaveSnark1 {
+    BitSet peer_indices;
+  };
+  struct MessageIwantSnark1 {
+    BitSet peer_indices;
   };
   struct MessageSnark1 {
     BitSet peer_indices;
@@ -57,14 +66,22 @@ namespace beamsim::example {
 
   class Message : public IMessage {
    public:
-    using Variant =
-        std::variant<MessageSignature, MessageSnark1, MessageSnark2>;
+    using Variant = std::variant<MessageSignature,
+                                 MessageIhaveSnark1,
+                                 MessageIwantSnark1,
+                                 MessageSnark1,
+                                 MessageSnark2>;
     Message(Variant variant) : variant{std::move(variant)} {}
 
     // IMessage
+    MESSAGE_TYPE_INDEX;
     MessageSize padding() const override {
       if (std::holds_alternative<MessageSignature>(variant)) {
         return consts().signature_size;
+      } else if (std::holds_alternative<MessageIhaveSnark1>(variant)) {
+        return 0;
+      } else if (std::holds_alternative<MessageIwantSnark1>(variant)) {
+        return 0;
       } else if (std::holds_alternative<MessageSnark1>(variant)) {
         return consts().snark_size;
       } else {
@@ -73,9 +90,14 @@ namespace beamsim::example {
       }
     }
     void encode(MessageEncodeTo &to) const override {
+      IMessage::encode(to);
       encodeTo(to, (uint8_t)variant.index());
       if (auto *signature = std::get_if<MessageSignature>(&variant)) {
         encodeTo(to, signature->peer_index);
+      } else if (auto *snark1 = std::get_if<MessageIhaveSnark1>(&variant)) {
+        encodeTo(to, snark1->peer_indices);
+      } else if (auto *snark1 = std::get_if<MessageIwantSnark1>(&variant)) {
+        encodeTo(to, snark1->peer_indices);
       } else if (auto *snark1 = std::get_if<MessageSnark1>(&variant)) {
         encodeTo(to, snark1->peer_indices);
       } else {
@@ -85,21 +107,46 @@ namespace beamsim::example {
     }
     static MessagePtr decode(MessageDecodeFrom &from) {
       auto i = from.get<uint8_t>();
-      if (i == 0) {
-        MessageSignature signature;
-        decodeFrom(from, signature.peer_index);
-        return std::make_shared<Message>(std::move(signature));
-      } else if (i == 1) {
-        MessageSnark1 snark1;
-        decodeFrom(from, snark1.peer_indices);
-        return std::make_shared<Message>(std::move(snark1));
-      } else {
-        MessageSnark2 snark2;
-        decodeFrom(from, snark2.peer_indices);
-        return std::make_shared<Message>(std::move(snark2));
+      switch (i) {
+        case 0: {
+          MessageSignature signature;
+          decodeFrom(from, signature.peer_index);
+          return std::make_shared<Message>(std::move(signature));
+        }
+        case 1: {
+          MessageIhaveSnark1 ihave;
+          decodeFrom(from, ihave.peer_indices);
+          return std::make_shared<Message>(std::move(ihave));
+        }
+        case 2: {
+          MessageIwantSnark1 iwant;
+          decodeFrom(from, iwant.peer_indices);
+          return std::make_shared<Message>(std::move(iwant));
+        }
+        case 3: {
+          MessageSnark1 snark1;
+          decodeFrom(from, snark1.peer_indices);
+          return std::make_shared<Message>(std::move(snark1));
+        }
+        case 4: {
+          MessageSnark2 snark2;
+          decodeFrom(from, snark2.peer_indices);
+          return std::make_shared<Message>(std::move(snark2));
+        }
       }
+      abort();
     }
 
     Variant variant;
   };
 }  // namespace beamsim::example
+
+template <>
+struct std::hash<beamsim::example::BitSet> {
+  static size_t operator()(const beamsim::example::BitSet &v) {
+    return beamsim::stdHash(std::string_view{
+        reinterpret_cast<const char *>(v.limbs_.data()),
+        v.limbs_.size(),
+    });
+  }
+};

@@ -262,6 +262,8 @@ struct Yaml {
       std::string_view suffix(r.ptr, end - r.ptr);
       if (suffix == "ms") {
         value = std::chrono::milliseconds{count};
+      } else if (suffix == "us") {
+        value = std::chrono::microseconds{count};
       } else {
         error();
       }
@@ -406,6 +408,24 @@ struct SimulationConfig {
       shuffle,
       "shuffle validators from same group to different routers",
   }};
+  bool snark1_pull = false;
+  Args::FlagBool flag_snark1_pull{{
+      {"--snark1-pull"},
+      snark1_pull,
+      "broadcast bitfield instead of snark1",
+  }};
+  bool snark1_half_direct = false;
+  Args::FlagBool flag_snark1_half_direct{{
+      {"--snark1-half-direct"},
+      snark1_half_direct,
+      "don't send snark1 to local aggregators",
+  }};
+  bool signature_direct = false;
+  Args::FlagBool flag_signature_direct{{
+      {"--signature-direct"},
+      signature_direct,
+      "don't send snark1 to local aggregators",
+  }};
   bool local_aggregation_only = false;
   Args::FlagBool flag_local_aggregation_only{{
       {"--local-aggregation-only"},
@@ -419,6 +439,7 @@ struct SimulationConfig {
       gml_path,
       "bin gml path",
   }};
+  uint64_t gml_bitrate = 0;
   uint32_t random_seed = 0;
   bool report = false;
   Args::FlagBool flag_report{
@@ -443,6 +464,9 @@ struct SimulationConfig {
              flag_group_count,
              flag_validators_per_group,
              flag_shuffle,
+             flag_snark1_pull,
+             flag_snark1_half_direct,
+             flag_signature_direct,
              flag_local_aggregation_only,
              flag_gml_path,
              flag_report,
@@ -487,6 +511,9 @@ struct SimulationConfig {
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
     yaml.at({"shuffle"}).get(shuffle);
+    yaml.at({"snark1_pull"}).get(snark1_pull);
+    yaml.at({"snark1_half_direct"}).get(snark1_half_direct);
+    yaml.at({"signature_direct"}).get(signature_direct);
 
     yaml.at({"random_seed"}).get(random_seed);
 
@@ -526,6 +553,7 @@ struct SimulationConfig {
       range("delay", config.delay);
     }
     yaml.at({"network", "gml"}).get(gml_path);
+    yaml.at({"network", "gml_bitrate"}).get(gml_bitrate);
 
     yaml.checkUnknown();
   }

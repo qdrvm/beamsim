@@ -372,7 +372,6 @@ namespace beamsim::ns3_ {
     Routing routing_;
     MessageId next_message_id_ = 0;
     std::unordered_map<MessageId, MessagePtr> messages_;
-    MessageDecodeFn message_decode_;
   };
 
   void Application::onAccept(SocketPtr socket, const ns3::Address &address) {
@@ -425,7 +424,7 @@ namespace beamsim::ns3_ {
             message = std::move(node.mapped());
           } else {
             MessageDecodeFrom data{item.data};
-            message = simulator_.message_decode_(data);
+            message = decodeMessage(data);
           }
           if (simulator_.metrics_ != nullptr) {
             simulator_.metrics_->onPeerReceivedMessage(state.peer_index);
