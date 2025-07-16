@@ -4,6 +4,7 @@
 #include <ns3/ipv4-address-helper.h>
 #include <ns3/ipv4-static-routing-helper.h>
 #include <ns3/point-to-point-helper.h>
+#include <ns3/traffic-control-module.h>
 
 #include <beamsim/ns3/mpi.hpp>
 #include <beamsim/routers.hpp>

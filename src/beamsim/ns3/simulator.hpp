@@ -4,10 +4,12 @@
 #include <ns3/core-module.h>
 #include <ns3/mpi-interface.h>
 #include <ns3/network-module.h>
+#include <ns3/traffic-control-module.h>
 
 #include <beamsim/i_simulator.hpp>
 #include <beamsim/ns3/routing.hpp>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace beamsim::ns3_ {
   using MessageId = uint64_t;
@@ -252,6 +254,33 @@ namespace beamsim::ns3_ {
       }
     }
 
+    // Set maximum incoming bandwidth for each node
+    void setMaxIncomingBandwidth(const ns3::DataRate& maxRate) {
+      max_incoming_bandwidth_ = maxRate;
+      if (beamsim::mpiIsMain()) {
+        std::println("Setting maximum incoming bandwidth to: {}", maxRate.GetBitRate());
+      }
+    }
+
+    // Apply bandwidth limiting to a specific node
+    void applyBandwidthLimiting(ns3::Ptr<ns3::Node> node) {
+      if (max_incoming_bandwidth_.GetBitRate() == 0) {
+        return; // No bandwidth limiting configured
+      }
+
+      // Install traffic control on all devices of the node
+      for (uint32_t i = 0; i < node->GetNDevices(); ++i) {
+        auto device = node->GetDevice(i);
+        if (device->IsPointToPoint()) {
+          // Check if this device already has traffic control installed
+          if (devices_with_traffic_control_.find(device) == devices_with_traffic_control_.end()) {
+            setupTrafficControl(device);
+            devices_with_traffic_control_.insert(device);
+          }
+        }
+      }
+    }
+
     // ISimulator
     ~Simulator() override {
       ns3::Simulator::Destroy();
@@ -295,6 +324,16 @@ namespace beamsim::ns3_ {
     }
     void connect(PeerIndex peer1, PeerIndex peer2) override {
       routing_.connect(peer1, peer2);
+      
+      // Apply bandwidth limiting to both peers after connection
+      if (max_incoming_bandwidth_.GetBitRate() > 0) {
+        if (isLocalPeer(peer1)) {
+          applyBandwidthLimiting(routing_.peers_.Get(peer1));
+        }
+        if (isLocalPeer(peer2)) {
+          applyBandwidthLimiting(routing_.peers_.Get(peer2));
+        }
+      }
     }
 
     template <typename Peer, typename... A>
@@ -305,7 +344,12 @@ namespace beamsim::ns3_ {
       if (isLocalPeer(index)) {
         auto peer = std::make_unique<Peer>(*this, index, std::forward<A>(a)...);
         application = ns3::Create<Application>(*this, std::move(peer));
-        routing_.peers_.Get(index)->AddApplication(std::move(application));
+        
+        // Apply bandwidth limiting to the peer node
+        auto node = routing_.peers_.Get(index);
+        applyBandwidthLimiting(node);
+        
+        node->AddApplication(std::move(application));
       }
     }
     template <typename Peer, typename... A>
@@ -366,7 +410,34 @@ namespace beamsim::ns3_ {
       return routing_.peers_.Get(peer_index)->GetSystemId() == mpiIndex();
     }
 
+   private:
+    void setupTrafficControl(ns3::Ptr<ns3::NetDevice> device) {
+      // Install traffic control helper
+      ns3::TrafficControlHelper tch;
+      
+      // Use Token Bucket Filter (TBF) for rate limiting
+      tch.SetRootQueueDisc("ns3::TbfQueueDisc");
+      
+      // Install queue discipline on the device
+      ns3::QueueDiscContainer qdiscs = tch.Install(device);
+      
+      if (qdiscs.GetN() > 0) {
+        auto qdisc = qdiscs.Get(0);
+        
+        // Set the token bucket parameters
+        qdisc->SetAttribute("Rate", ns3::DataRateValue(max_incoming_bandwidth_));
+        qdisc->SetAttribute("Burst", ns3::UintegerValue(max_incoming_bandwidth_.GetBitRate() / 8)); // 1 second burst
+        qdisc->SetAttribute("Mtu", ns3::UintegerValue(1500)); // Standard MTU
+        
+        // Set queue size limit
+        qdisc->SetAttribute("MaxSize", ns3::QueueSizeValue(ns3::QueueSize("1000p")));
+      }
+    }
+
+   public:
     IMetrics *metrics_;
+    ns3::DataRate max_incoming_bandwidth_{0}; // 0 means no limiting
+    std::unordered_set<ns3::Ptr<ns3::NetDevice>> devices_with_traffic_control_;
     bool cache_messages_ = true;
     std::vector<ns3::Ptr<Application>> applications_;
     Routing routing_;

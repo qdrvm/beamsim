@@ -854,6 +854,10 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::NS3_DIRECT: {
 #ifdef ns3_FOUND
       beamsim::ns3_::Simulator simulator{metrics_ptr};
+      
+      // Set maximum incoming bandwidth limit from configuration
+      simulator.setMaxIncomingBandwidth(ns3::DataRate(config.max_incoming_bandwidth));
+      
       if (config.backend == SimulationConfig::Backend::NS3) {
         simulator.routing_.initRouters(routers);
       } else {

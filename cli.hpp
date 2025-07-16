@@ -441,6 +441,12 @@ struct SimulationConfig {
   }};
   uint64_t gml_bitrate = 0;
   uint32_t random_seed = 0;
+  std::string max_incoming_bandwidth = "100Mbps";
+  Args::FlagStr flag_max_incoming_bandwidth{{
+      {"--max-incoming-bandwidth"},
+      max_incoming_bandwidth,
+      "Maximum incoming bandwidth per node (e.g., 100Mbps, 1Gbps)",
+  }};
   bool report = false;
   Args::FlagBool flag_report{
       {{"--report"}, report, "Print report data for plots"}};
@@ -469,6 +475,7 @@ struct SimulationConfig {
              flag_signature_direct,
              flag_local_aggregation_only,
              flag_gml_path,
+             flag_max_incoming_bandwidth,
              flag_report,
              flag_help,
              flag_local_aggregators,
@@ -516,6 +523,7 @@ struct SimulationConfig {
     yaml.at({"signature_direct"}).get(signature_direct);
 
     yaml.at({"random_seed"}).get(random_seed);
+    yaml.at({"max_incoming_bandwidth"}).get(max_incoming_bandwidth);
 
     yaml.at({"roles", "group_count"}).get(roles_config.group_count);
     yaml.at({"roles", "group_validator_count"})
