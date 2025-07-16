@@ -523,7 +523,6 @@ struct SimulationConfig {
     yaml.at({"signature_direct"}).get(signature_direct);
 
     yaml.at({"random_seed"}).get(random_seed);
-    yaml.at({"max_incoming_bandwidth"}).get(max_incoming_bandwidth);
 
     yaml.at({"roles", "group_count"}).get(roles_config.group_count);
     yaml.at({"roles", "group_validator_count"})
@@ -560,6 +559,7 @@ struct SimulationConfig {
       range("bitrate", config.bitrate);
       range("delay", config.delay);
     }
+    yaml.at({"network", "max_incoming_bandwidth"}).get(max_incoming_bandwidth);
     yaml.at({"network", "gml"}).get(gml_path);
     yaml.at({"network", "gml_bitrate"}).get(gml_bitrate);
 
