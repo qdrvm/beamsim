@@ -118,7 +118,11 @@ namespace beamsim {
       return routers;
     }
 
-    void makeDirect(const example::Roles &roles, const auto &f) {
+    void makeDirect(const example::Roles &roles,
+                    uint64_t max_bitrate,
+                    const auto &f) {
+      WireProps peer_wire =
+          max_bitrate == 0 ? WireProps::kZero : WireProps{max_bitrate, 0};
       auto n = roles.validator_count;
       peer_wire_.reserve(n);
       router_wires_.resize(n);
@@ -127,7 +131,7 @@ namespace beamsim {
         row.resize(n, {0, WireProps::kZero});
       }
       for (PeerIndex i1 = 0; i1 < n; ++i1) {
-        peer_wire_.emplace_back(i1, WireProps::kZero);
+        peer_wire_.emplace_back(i1, peer_wire);
         for (PeerIndex i2 = 0; i2 < i1; ++i2) {
           auto wire = f(i1, i2);
           wireRouter(i1, i2, wire);
@@ -139,17 +143,20 @@ namespace beamsim {
 
     static Routers make(Random &random,
                         const example::Roles &roles,
-                        const DirectRouterConfig &config) {
+                        const DirectRouterConfig &config,
+                        uint64_t max_bitrate) {
       Routers routers;
-      routers.makeDirect(
-          roles, [&](PeerIndex, PeerIndex) { return config.make(random); });
+      routers.makeDirect(roles, max_bitrate, [&](PeerIndex, PeerIndex) {
+        return config.make(random);
+      });
       return routers;
     }
 
     static Routers make(Random &random,
                         const example::Roles &roles,
                         const Gml &gml,
-                        uint64_t gml_bitrate) {
+                        uint64_t gml_bitrate,
+                        uint64_t max_bitrate) {
       Routers routers;
       auto g = gml.nodes.size();
       // TODO: shuffle
@@ -163,7 +170,7 @@ namespace beamsim {
           }
         }
       }
-      routers.makeDirect(roles, [&](PeerIndex i1, PeerIndex i2) {
+      routers.makeDirect(roles, max_bitrate, [&](PeerIndex i1, PeerIndex i2) {
         auto n1 = i1 % g;
         auto n2 = i2 % g;
         auto &node1 = gml.nodes.at(n1);

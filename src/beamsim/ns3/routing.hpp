@@ -213,14 +213,22 @@ namespace beamsim::ns3_ {
       }
     }
 
-    void initDirect(const Routers &routers, const auto &mpi_group) {
+    void initDirect(const Routers &routers,
+                    uint64_t max_bitrate,
+                    const auto &mpi_group) {
       for (PeerIndex i = 0; i < routers.peer_wire_.size(); ++i) {
         assert2(addPeerNode(mpi_group(i) % beamsim::mpiSize()) == i);
-        auto ip = direct_ip_generator_.generate();
-        peer_ips_.emplace(i, ip);
-        ip_peer_index_.emplace(ip, i);
+        if (max_bitrate != 0) {
+          assert2(addRouter(mpi_group(i) % beamsim::mpiSize()) == i);
+          wirePeer(i, i, routers.peer_wire_.at(i).wire);
+        } else {
+          auto ip = direct_ip_generator_.generate();
+          peer_ips_.emplace(i, ip);
+          ip_peer_index_.emplace(ip, i);
+        }
       }
       direct_ = &routers;
+      direct_max_bitrate_ = max_bitrate;
     }
 
     void connect(PeerIndex peer1, PeerIndex peer2) {
@@ -233,14 +241,29 @@ namespace beamsim::ns3_ {
                   .second) {
         return;
       }
-      auto [endpoint1, endpoint2] =
-          _wireStatic(peers_.Get(peer1),
-                      peer_ips_.at(peer1),
-                      peers_.Get(peer2),
-                      peer_ips_.at(peer2),
-                      direct_->directWire(peer1, peer2));
-      endpoint1.routing->AddHostRouteTo(endpoint2.ip, endpoint1.interface);
-      endpoint2.routing->AddHostRouteTo(endpoint1.ip, endpoint2.interface);
+      if (direct_max_bitrate_ != 0) {
+        auto &subnet1 = peerRouterIpSubnet(peer1);
+        auto &subnet2 = peerRouterIpSubnet(peer2);
+        auto [endpoint1, endpoint2] =
+            _wireStatic(routers_.Get(peer1),
+                        subnet1.router_ip,
+                        routers_.Get(peer2),
+                        subnet2.router_ip,
+                        direct_->directWire(peer1, peer2));
+        endpoint1.routing->AddNetworkRouteTo(
+            subnet2.ip_generator.network, kIpMask, endpoint1.interface);
+        endpoint2.routing->AddNetworkRouteTo(
+            subnet1.ip_generator.network, kIpMask, endpoint2.interface);
+      } else {
+        auto [endpoint1, endpoint2] =
+            _wireStatic(peers_.Get(peer1),
+                        peer_ips_.at(peer1),
+                        peers_.Get(peer2),
+                        peer_ips_.at(peer2),
+                        direct_->directWire(peer1, peer2));
+        endpoint1.routing->AddHostRouteTo(endpoint2.ip, endpoint1.interface);
+        endpoint2.routing->AddHostRouteTo(endpoint1.ip, endpoint2.interface);
+      }
     }
 
     void populateRoutingTables() {
@@ -305,6 +328,7 @@ namespace beamsim::ns3_ {
     std::unordered_map<PeerIndex, RouterInfo> router_info_;
     std::unordered_map<PeerIndex, PeerRouterIpSubnet> peer_router_ip_subnet_;
     const Routers *direct_ = nullptr;
+    uint64_t direct_max_bitrate_ = 0;
     IpGenerator direct_ip_generator_{0};
     std::unordered_set<std::pair<PeerIndex, PeerIndex>, PairHash> direct_links_;
     ns3::NodeContainer peers_;

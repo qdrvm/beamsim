@@ -441,6 +441,12 @@ struct SimulationConfig {
   }};
   uint64_t gml_bitrate = 0;
   uint32_t random_seed = 0;
+  uint64_t max_bitrate = 100 * 1'000'000;
+  Args::FlagInt<uint64_t> flag_max_bitrate{{
+      {"--max-bitrate"},
+      max_bitrate,
+      "Maximum bitrate per node",
+  }};
   bool report = false;
   Args::FlagBool flag_report{
       {{"--report"}, report, "Print report data for plots"}};
@@ -469,6 +475,7 @@ struct SimulationConfig {
              flag_signature_direct,
              flag_local_aggregation_only,
              flag_gml_path,
+             flag_max_bitrate,
              flag_report,
              flag_help,
              flag_local_aggregators,
@@ -552,6 +559,7 @@ struct SimulationConfig {
       range("bitrate", config.bitrate);
       range("delay", config.delay);
     }
+    yaml.at({"network", "max_bitrate"}).get(max_bitrate);
     yaml.at({"network", "gml"}).get(gml_path);
     yaml.at({"network", "gml_bitrate"}).get(gml_bitrate);
 
