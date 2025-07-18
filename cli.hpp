@@ -3,9 +3,28 @@
 #include <yaml-cpp/yaml.h>
 
 #include <beamsim/example/roles.hpp>
+#include <beamsim/from_chars.hpp>
 #include <beamsim/gossip/config.hpp>
 #include <beamsim/ns3/mpi.hpp>
-#include <charconv>
+
+struct Bitrate {
+  uint64_t v;
+
+  static std::optional<Bitrate> parse(std::string_view s) {
+    auto r = beamsim::numFromChars<decltype(v)>(s);
+    if (not r.has_value()) {
+      return std::nullopt;
+    }
+    auto [num, suffix] = r.value();
+    if (suffix.empty()) {
+      return Bitrate{num};
+    }
+    if (suffix == "Mbps") {
+      return Bitrate{num * 1'000'000};
+    }
+    return std::nullopt;
+  }
+};
 
 struct Args {
   Args(int argc, char **argv)
@@ -88,7 +107,7 @@ struct Args {
         return false;
       }
       auto r = enum_.parse(arg.value());
-      if (not r) {
+      if (not r.has_value()) {
         std::string s;
         enum_.join(s, ", ");
         std::println("Error: {} expects one of: {}", flag2, s);
@@ -116,14 +135,14 @@ struct Args {
       if (not arg) {
         return false;
       }
-      auto end = arg->data() + arg->size();
-      auto r = std::from_chars(arg->data(), end, Flag<T>::value_);
-      if (r.ec != std::errc{} or r.ptr != end) {
+      auto r = beamsim::numFromChars<T>(arg.value());
+      if (not r.has_value() or not r->second.empty()) {
         std::println("Error: {} expects {}number",
                      flag2,
                      std::is_unsigned_v<T> ? "positive " : "");
         return false;
       }
+      Flag<T>::value_ = r->first;
       return true;
     }
   };
@@ -142,6 +161,30 @@ struct Args {
         return false;
       }
       value_ = arg.value();
+      return true;
+    }
+  };
+
+  struct FlagBitrate : Flag<Bitrate> {
+    void help1(std::string &line) const {
+      Flag<Bitrate>::help1(line);
+      line += " <bitrate>";
+    }
+    void help2(std::string &line) const {
+      Flag<Bitrate>::help2(line);
+      line += std::format(" (default: {})", Flag<Bitrate>::value_.v);
+    }
+    bool parse(std::string flag2, Args &args) const {
+      auto arg = args.next();
+      if (not arg) {
+        return false;
+      }
+      auto r = Bitrate::parse(arg.value());
+      if (not r.has_value()) {
+        std::println("Error: {} expects bitrate", flag2);
+        return false;
+      }
+      value_ = r.value();
       return true;
     }
   };
@@ -172,12 +215,6 @@ struct Args {
     for (auto &line : lines) {
       std::println("{}", line);
     }
-    /*
-    "  -b, --backend <delay|queue|ns3>   Simulation backend (default: delay)"
-    "  -t, --topology <direct|gossip>    Communication topology (default: direct)"
-    "  -g, --groups <number>             Number of validator groups (default: 4)"
-    "  -gv, --group-validators <number>  Validators per group (default: 3)"
-    */
   }
 
   template <typename... A>
@@ -242,7 +279,7 @@ struct Yaml {
         return;
       }
       auto r = enum_.parse(node.as<std::string>());
-      if (not r) {
+      if (not r.has_value()) {
         error();
       }
       value = r.value();
@@ -253,13 +290,11 @@ struct Yaml {
         return;
       }
       auto str = node.as<std::string>();
-      auto end = str.data() + str.size();
-      uint64_t count;
-      auto r = std::from_chars(str.data(), end, count);
-      if (r.ec != std::errc{}) {
+      auto r = beamsim::numFromChars<uint64_t>(str);
+      if (not r.has_value()) {
         error();
       }
-      std::string_view suffix(r.ptr, end - r.ptr);
+      auto [count, suffix] = r.value();
       if (suffix == "ms") {
         value = std::chrono::milliseconds{count};
       } else if (suffix == "us") {
@@ -267,6 +302,18 @@ struct Yaml {
       } else {
         error();
       }
+    }
+
+    void get(Bitrate &value) const {
+      if (not node.IsDefined()) {
+        return;
+      }
+      auto str = node.as<std::string>();
+      auto r = Bitrate::parse(str);
+      if (not r.has_value()) {
+        error();
+      }
+      value = r.value();
     }
 
     template <typename T>
@@ -441,8 +488,8 @@ struct SimulationConfig {
   }};
   uint64_t gml_bitrate = 0;
   uint32_t random_seed = 0;
-  uint64_t max_bitrate = 100 * 1'000'000;
-  Args::FlagInt<uint64_t> flag_max_bitrate{{
+  Bitrate max_bitrate = {100 * 1'000'000};
+  Args::FlagBitrate flag_max_bitrate{{
       {"--max-bitrate"},
       max_bitrate,
       "Maximum bitrate per node",
