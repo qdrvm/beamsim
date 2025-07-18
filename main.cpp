@@ -694,9 +694,11 @@ void run_simulation(const SimulationConfig &config) {
       exit(EXIT_FAILURE);
     }
     auto gml = beamsim::Gml::decode(file.data);
-    routers = beamsim::Routers::make(random, roles, gml, config.gml_bitrate);
+    routers = beamsim::Routers::make(
+        random, roles, gml, config.gml_bitrate, config.max_bitrate.v);
   } else if (config.direct_router) {
-    routers = beamsim::Routers::make(random, roles, *config.direct_router);
+    routers = beamsim::Routers::make(
+        random, roles, *config.direct_router, config.max_bitrate.v);
   } else {
     routers = beamsim::Routers::make(random, roles, config.shuffle);
     routers.computeRoutes();
@@ -857,9 +859,10 @@ void run_simulation(const SimulationConfig &config) {
       if (config.backend == SimulationConfig::Backend::NS3) {
         simulator.routing_.initRouters(routers);
       } else {
-        simulator.routing_.initDirect(routers, [&](beamsim::PeerIndex i) {
-          return roles.group_of_validator.at(i);
-        });
+        simulator.routing_.initDirect(
+            routers, config.max_bitrate.v, [&](beamsim::PeerIndex i) {
+              return roles.group_of_validator.at(i);
+            });
       }
       run(simulator);
 #else

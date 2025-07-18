@@ -3,6 +3,7 @@ topology: direct
 shuffle: false
 snark1_pull: false
 snark1_half_direct: false
+signature_direct: false
 
 random_seed: 0
 
@@ -36,3 +37,5 @@ network:
       min: 10ms
       max: 100ms
   # gml: "shadow-atlas.bin"
+  # gml_bitrate: 8000000
+  # max_bitrate: 8000000
