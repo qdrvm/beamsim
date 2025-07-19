@@ -24,6 +24,7 @@ namespace beamsim::example {
       std::vector<PeerIndex> validators;
       IndexOfPeerMap index_of_validators;
       std::vector<PeerIndex> local_aggregators;
+      IndexOfPeerMap index_of_local_aggregators;
     };
     PeerIndex validator_count;
     std::vector<Group> groups;
@@ -66,7 +67,10 @@ namespace beamsim::example {
       for (PeerIndex peer_index = 0; peer_index < local_aggregator_count;
            ++peer_index) {
         GroupIndex group_index = peer_index % config.group_count;
-        roles.groups.at(group_index).local_aggregators.emplace_back(peer_index);
+        auto &group = roles.groups.at(group_index);
+        group.index_of_local_aggregators.emplace(
+            peer_index, group.local_aggregators.size());
+        group.local_aggregators.emplace_back(peer_index);
       }
       for (PeerIndex peer_index = local_aggregator_count;
            peer_index < aggregator_count;
