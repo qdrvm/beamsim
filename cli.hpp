@@ -461,6 +461,12 @@ struct SimulationConfig {
       snark1_pull,
       "broadcast bitfield instead of snark1",
   }};
+  bool signature_half_direct = false;
+  Args::FlagBool flag_signature_half_direct{{
+      {"--signature-half-direct"},
+      signature_half_direct,
+      "don't send signature to validators",
+  }};
   bool snark1_half_direct = false;
   Args::FlagBool flag_snark1_half_direct{{
       {"--snark1-half-direct"},
@@ -518,6 +524,7 @@ struct SimulationConfig {
              flag_validators_per_group,
              flag_shuffle,
              flag_snark1_pull,
+             flag_signature_half_direct,
              flag_snark1_half_direct,
              flag_signature_direct,
              flag_local_aggregation_only,
@@ -566,6 +573,7 @@ struct SimulationConfig {
     yaml.at({"topology"}).get(topology, enum_topology_);
     yaml.at({"shuffle"}).get(shuffle);
     yaml.at({"snark1_pull"}).get(snark1_pull);
+    yaml.at({"signature_half_direct"}).get(signature_half_direct);
     yaml.at({"snark1_half_direct"}).get(snark1_half_direct);
     yaml.at({"signature_direct"}).get(signature_direct);
 
