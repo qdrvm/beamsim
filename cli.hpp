@@ -637,7 +637,6 @@ struct SimulationConfig {
         .get(roles_config.global_aggregator_count);
     std::string local_aggregators_str;
     yaml.at({"roles", "group_local_aggregator_count"})
-        // .get(roles_config.group_local_aggregator_count);
         .get(local_aggregators_str);
 
     if (not local_aggregators_str.empty()) {
