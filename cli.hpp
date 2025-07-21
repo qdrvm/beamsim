@@ -54,6 +54,9 @@ struct AbsOrRatio {
       if (suffix != "%") {
         return std::nullopt;
       }
+      if (std::is_unsigned_v<T> and num < 0) {
+        return std::nullopt;
+      }
       return Ratio{num / 100};
     }
     auto r = beamsim::numFromChars<T>(s);
