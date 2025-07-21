@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cmath>
 #include <yaml-cpp/yaml.h>
 
 #include <beamsim/example/roles.hpp>
@@ -27,12 +26,55 @@ struct Bitrate {
   }
 };
 
+struct Ratio {
+  double v;
+};
+
+template <typename T>
+struct AbsOrRatio {
+  std::variant<T, Ratio> v;
+
+  AbsOrRatio(T v) : v{v} {}
+  AbsOrRatio(Ratio v) : v{v} {}
+
+  T get(T n) const {
+    if (auto *abs = std::get_if<T>(&v)) {
+      return *abs;
+    }
+    return std::get<Ratio>(v).v * n;
+  }
+
+  static std::optional<AbsOrRatio<T>> parse(std::string_view s) {
+    if (s.ends_with("%")) {
+      auto r = beamsim::numFromChars<decltype(Ratio::v)>(s);
+      if (not r.has_value()) {
+        return std::nullopt;
+      }
+      auto [num, suffix] = r.value();
+      if (suffix != "%") {
+        return std::nullopt;
+      }
+      return Ratio{num / 100};
+    }
+    auto r = beamsim::numFromChars<T>(s);
+    if (not r.has_value()) {
+      return std::nullopt;
+    }
+    auto [num, suffix] = r.value();
+    if (not suffix.empty()) {
+      return std::nullopt;
+    }
+    return num;
+  }
+};
+
 struct Args {
   Args(int argc, char **argv)
       : args_{argv + 1, static_cast<size_t>(argc - 1)} {}
 
   using Flags = std::vector<std::string>;
-  template <typename T> struct Flag {
+  template <typename T>
+  struct Flag {
     void help1(std::string &line) const {
       auto sep = false;
       for (auto &flag : flags_) {
@@ -45,14 +87,17 @@ struct Args {
       }
     }
 
-    void help2(std::string &line) const { line += help_; }
+    void help2(std::string &line) const {
+      line += help_;
+    }
 
     Flags flags_;
     T &value_;
     std::string help_;
   };
 
-  template <typename T> struct Enum {
+  template <typename T>
+  struct Enum {
     Enum(std::map<T, std::string> map) : map_{map} {}
 
     std::optional<T> parse(std::string_view s) const {
@@ -64,7 +109,9 @@ struct Args {
       return std::nullopt;
     }
 
-    std::string str(T v) const { return map_.at(v); }
+    std::string str(T v) const {
+      return map_.at(v);
+    }
 
     void join(std::string &out, std::string sep) const {
       auto first = true;
@@ -81,7 +128,8 @@ struct Args {
     std::map<T, std::string> map_;
   };
 
-  template <typename T> struct FlagEnum : Flag<T> {
+  template <typename T>
+  struct FlagEnum : Flag<T> {
     FlagEnum(Flags flags, T &value, std::string help, const Enum<T> &enum_)
         : Flag<T>{flags, value, help}, enum_{enum_} {}
 
@@ -114,7 +162,8 @@ struct Args {
     const Enum<T> &enum_;
   };
 
-  template <std::integral T> struct FlagInt : Flag<T> {
+  template <std::integral T>
+  struct FlagInt : Flag<T> {
     void help1(std::string &line) const {
       Flag<T>::help1(line);
       line += " <number>";
@@ -130,7 +179,8 @@ struct Args {
       }
       auto r = beamsim::numFromChars<T>(arg.value());
       if (not r.has_value() or not r->second.empty()) {
-        std::println("Error: {} expects {}number", flag2,
+        std::println("Error: {} expects {}number",
+                     flag2,
                      std::is_unsigned_v<T> ? "positive " : "");
         return false;
       }
@@ -181,81 +231,41 @@ struct Args {
     }
   };
 
-  struct FlagLocalAggregators : Flag<beamsim::PeerIndex> {
-    FlagLocalAggregators(Flags flags, beamsim::PeerIndex &value,
-                         std::string help,
-                         beamsim::PeerIndex &group_validator_count)
-        : Flag<beamsim::PeerIndex>{flags, value, help},
-          group_validator_count_{group_validator_count}, is_percentage_{false},
-          percentage_value_{0.0} {}
-
+  template <typename T>
+  struct FlagAbsOrRatio : Flag<AbsOrRatio<T>> {
     void help1(std::string &line) const {
-      Flag<beamsim::PeerIndex>::help1(line);
-      line += " <number|percentage%>";
+      Flag<AbsOrRatio<T>>::help1(line);
+      line += " <number|percent%>";
     }
     void help2(std::string &line) const {
-      Flag<beamsim::PeerIndex>::help2(line);
-      line += std::format(" (default: {})", Flag<beamsim::PeerIndex>::value_);
+      Flag<AbsOrRatio<T>>::help2(line);
+      std::string s;
+      auto &v = Flag<AbsOrRatio<T>>::value_.v;
+      if (auto *abs = std::get_if<T>(&v)) {
+        s = std::to_string(*abs);
+      } else {
+        s = std::format("{:.2f}%", 100 * std::get<Ratio>(v).v);
+      }
+      line += std::format(" (default: {})", s);
     }
     bool parse(std::string flag2, Args &args) const {
       auto arg = args.next();
       if (not arg) {
         return false;
       }
-
-      std::string arg_str = arg.value();
-
-      // Check if it's a percentage (ends with %)
-      if (!arg_str.empty() && arg_str.back() == '%') {
-        std::string_view percentage_str{arg_str.data(), arg_str.size() - 1};
-        auto r = beamsim::numFromChars<double>(percentage_str);
-        if (not r.has_value() or not r->second.empty() or r->first < 0.0 or
-            r->first > 100.0) {
-          std::println("Error: {} expects percentage between 0% and 100%",
-                       flag2);
-          return false;
-        }
-        is_percentage_ = true;
-        percentage_value_ = r->first / 100.0;
-        // Calculate the actual value based on group_validator_count
-        auto calculated_value = static_cast<beamsim::PeerIndex>(
-            std::round(percentage_value_ * group_validator_count_));
-        // Ensure at least 1 local aggregator
-        Flag<beamsim::PeerIndex>::value_ =
-            std::max(calculated_value, static_cast<beamsim::PeerIndex>(1));
-        return true;
-      } else {
-        // Parse as integer
-        auto r = beamsim::numFromChars<beamsim::PeerIndex>(arg_str);
-        if (not r.has_value() or not r->second.empty()) {
-          std::println("Error: {} expects positive number or percentage",
-                       flag2);
-          return false;
-        }
-        is_percentage_ = false;
-        Flag<beamsim::PeerIndex>::value_ = r->first;
-        return true;
+      auto &value = Flag<AbsOrRatio<T>>::value_;
+      auto r = value.parse(arg.value());
+      if (not r.has_value()) {
+        std::println("Error: {} expects number or percent", flag2);
+        return false;
       }
+      value = r.value();
+      return true;
     }
-
-    // Method to recalculate value when group_validator_count changes
-    void recalculate() const {
-      if (is_percentage_) {
-        auto calculated_value = static_cast<beamsim::PeerIndex>(
-            std::round(percentage_value_ * group_validator_count_));
-        // Ensure at least 1 local aggregator
-        Flag<beamsim::PeerIndex>::value_ =
-            std::max(calculated_value, static_cast<beamsim::PeerIndex>(1));
-      }
-    }
-
-  private:
-    beamsim::PeerIndex &group_validator_count_;
-    mutable bool is_percentage_;
-    mutable double percentage_value_;
   };
 
-  template <typename... A> static void help(const A &...a) {
+  template <typename... A>
+  static void help(const A &...a) {
     std::vector<std::string> lines;
     lines.resize(sizeof...(a));
     size_t align = 0;
@@ -282,7 +292,8 @@ struct Args {
     }
   }
 
-  template <typename... A> bool parse(const A &...a) {
+  template <typename... A>
+  bool parse(const A &...a) {
     std::map<std::string, std::function<bool(std::string)>> flags;
     auto add = [&, this](const auto &flag) {
       auto parse = [&, this](std::string flag2) {
@@ -326,7 +337,9 @@ struct Yaml {
   };
 
   struct Value {
-    operator bool() const { return node.IsDefined(); }
+    operator bool() const {
+      return node.IsDefined();
+    }
 
     Value &required() {
       if (not node.IsDefined()) {
@@ -335,7 +348,8 @@ struct Yaml {
       return *this;
     }
 
-    template <typename T> void get(T &value, const Args::Enum<T> &enum_) const {
+    template <typename T>
+    void get(T &value, const Args::Enum<T> &enum_) const {
       if (not node.IsDefined()) {
         return;
       }
@@ -377,14 +391,29 @@ struct Yaml {
       value = r.value();
     }
 
-    template <typename T> void get(T &value) const {
+    template <typename T>
+    void get(AbsOrRatio<T> &value) const {
+      if (not node.IsDefined()) {
+        return;
+      }
+      auto r = value.parse(node.as<std::string>());
+      if (not r.has_value()) {
+        error();
+      }
+      value = r.value();
+    }
+
+    template <typename T>
+    void get(T &value) const {
       if (not node.IsDefined()) {
         return;
       }
       value = node.as<T>();
     }
 
-    [[noreturn]] void error() const { throw YAML::BadConversion{node.Mark()}; }
+    [[noreturn]] void error() const {
+      throw YAML::BadConversion{node.Mark()};
+    }
 
     Value at(Path path) const {
       auto new_path = path;
@@ -406,9 +435,12 @@ struct Yaml {
     KnownPaths *known;
   };
 
-  Value at(Path path) { return Value{{}, root, &known_paths}.at(path); }
+  Value at(Path path) {
+    return Value{{}, root, &known_paths}.at(path);
+  }
 
-  static void checkUnknown(Path &path, YAML::Node node,
+  static void checkUnknown(Path &path,
+                           YAML::Node node,
                            const KnownPaths &known) {
     assert2(node.IsDefined());
     if (node.IsMap()) {
@@ -430,7 +462,8 @@ struct Yaml {
           }
           std::println("unknown yaml keys: {}", s);
         }
-        checkUnknown(path, x.second,
+        checkUnknown(path,
+                     x.second,
                      it == known.children.end() ? KnownPaths{} : it->second);
         path.pop_back();
       }
@@ -559,11 +592,12 @@ struct SimulationConfig {
       {{"--report"}, report, "Print report data for plots"}};
   bool help = false;
   Args::FlagBool flag_help{{{"-h", "--help"}, help, "Show this help message"}};
-  Args::FlagLocalAggregators flag_local_aggregators{
+  AbsOrRatio<beamsim::PeerIndex> local_aggregators = {1};
+  Args::FlagAbsOrRatio<beamsim::PeerIndex> flag_local_aggregators{{
       {"-la", "--local-aggregators"},
-      roles_config.group_local_aggregator_count,
-      "Number of local aggregators per group (integer or percentage%)",
-      roles_config.group_validator_count};
+      local_aggregators,
+      "Number of local aggregators per group",
+  }};
   Args::FlagInt<beamsim::example::GroupIndex> flag_global_aggregators{{
       {"-ga", "--global-aggregators"},
       roles_config.global_aggregator_count,
@@ -571,11 +605,22 @@ struct SimulationConfig {
   }};
 
   auto flags(auto &&f) {
-    return f(flag_config_path, flag_backend, flag_topology, flag_group_count,
-             flag_validators_per_group, flag_shuffle, flag_snark1_pull,
-             flag_signature_half_direct, flag_snark1_half_direct,
-             flag_signature_direct, flag_local_aggregation_only, flag_gml_path,
-             flag_max_bitrate, flag_report, flag_help, flag_local_aggregators,
+    return f(flag_config_path,
+             flag_backend,
+             flag_topology,
+             flag_group_count,
+             flag_validators_per_group,
+             flag_shuffle,
+             flag_snark1_pull,
+             flag_signature_half_direct,
+             flag_snark1_half_direct,
+             flag_signature_direct,
+             flag_local_aggregation_only,
+             flag_gml_path,
+             flag_max_bitrate,
+             flag_report,
+             flag_help,
+             flag_local_aggregators,
              flag_global_aggregators);
   }
 
@@ -589,13 +634,7 @@ struct SimulationConfig {
   }
 
   bool _parse(Args args) {
-    bool result = true;
-    flags([&](auto &&...a) {
-      if (!args.parse(a...)) {
-        result = false;
-      }
-    });
-    return result;
+    return flags([&](auto &&...a) { return args.parse(a...); });
   }
 
   bool parse_args(int argc, char **argv) {
@@ -609,11 +648,22 @@ struct SimulationConfig {
     if (not _parse({argc, argv})) {
       return false;
     }
-    // Recalculate local aggregators if they were specified as percentage
-    flag_local_aggregators.recalculate();
     if (local_aggregation_only) {
       roles_config.global_aggregator_count = 1;
       roles_config.group_count = 1;
+    }
+    auto max_group_local_aggregators =
+        (roles_config.group_count * roles_config.group_validator_count
+         - roles_config.global_aggregator_count)
+        / roles_config.group_count;
+    roles_config.group_local_aggregator_count =
+        local_aggregators.get(roles_config.group_validator_count);
+    if (roles_config.group_local_aggregator_count
+        > max_group_local_aggregators) {
+      std::println("Warning: group local aggregator count {} exceeds {}",
+                   roles_config.group_local_aggregator_count,
+                   max_group_local_aggregators);
+      roles_config.group_local_aggregator_count = max_group_local_aggregators;
     }
     return true;
   }
@@ -635,35 +685,7 @@ struct SimulationConfig {
         .get(roles_config.group_validator_count);
     yaml.at({"roles", "global_aggregator_count"})
         .get(roles_config.global_aggregator_count);
-    std::string local_aggregators_str;
-    yaml.at({"roles", "group_local_aggregator_count"})
-        .get(local_aggregators_str);
-
-    if (not local_aggregators_str.empty()) {
-      if (local_aggregators_str.back() == '%') {
-        local_aggregators_str.pop_back();
-        auto r = beamsim::numFromChars<double>(local_aggregators_str);
-        if (not r.has_value() or not r->second.empty() or r->first < 0.0 or
-            r->first > 100.0) {
-          std::println("Error: group_local_aggregator_count expects percentage "
-                       "between 0% and 100%");
-          exit(EXIT_FAILURE);
-        }
-        roles_config.group_local_aggregator_count =
-            static_cast<beamsim::PeerIndex>(std::round(
-                r->first / 100.0 * roles_config.group_validator_count));
-      } else {
-        auto r =
-            beamsim::numFromChars<beamsim::PeerIndex>(local_aggregators_str);
-        if (not r.has_value() or not r->second.empty()) {
-          std::println(
-              "Error: group_local_aggregator_count expects positive number or "
-              "percentage");
-          exit(EXIT_FAILURE);
-        }
-        roles_config.group_local_aggregator_count = r->first;
-      }
-    }
+    yaml.at({"roles", "group_local_aggregator_count"}).get(local_aggregators);
 
     yaml.at({"gossip", "mesh_n"}).get(gossip_config.mesh_n);
     yaml.at({"gossip", "non_mesh_n"}).get(gossip_config.non_mesh_n);
