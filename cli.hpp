@@ -26,6 +26,51 @@ struct Bitrate {
   }
 };
 
+struct Ratio {
+  double v;
+};
+
+template <typename T>
+struct AbsOrRatio {
+  std::variant<T, Ratio> v;
+
+  AbsOrRatio(T v) : v{v} {}
+  AbsOrRatio(Ratio v) : v{v} {}
+
+  T get(T n) const {
+    if (auto *abs = std::get_if<T>(&v)) {
+      return *abs;
+    }
+    return std::get<Ratio>(v).v * n;
+  }
+
+  static std::optional<AbsOrRatio<T>> parse(std::string_view s) {
+    if (s.ends_with("%")) {
+      auto r = beamsim::numFromChars<decltype(Ratio::v)>(s);
+      if (not r.has_value()) {
+        return std::nullopt;
+      }
+      auto [num, suffix] = r.value();
+      if (suffix != "%") {
+        return std::nullopt;
+      }
+      if (std::is_unsigned_v<T> and num < 0) {
+        return std::nullopt;
+      }
+      return Ratio{num / 100};
+    }
+    auto r = beamsim::numFromChars<T>(s);
+    if (not r.has_value()) {
+      return std::nullopt;
+    }
+    auto [num, suffix] = r.value();
+    if (not suffix.empty()) {
+      return std::nullopt;
+    }
+    return num;
+  }
+};
+
 struct Args {
   Args(int argc, char **argv)
       : args_{argv + 1, static_cast<size_t>(argc - 1)} {}
@@ -189,6 +234,39 @@ struct Args {
     }
   };
 
+  template <typename T>
+  struct FlagAbsOrRatio : Flag<AbsOrRatio<T>> {
+    void help1(std::string &line) const {
+      Flag<AbsOrRatio<T>>::help1(line);
+      line += " <number|percent%>";
+    }
+    void help2(std::string &line) const {
+      Flag<AbsOrRatio<T>>::help2(line);
+      std::string s;
+      auto &v = Flag<AbsOrRatio<T>>::value_.v;
+      if (auto *abs = std::get_if<T>(&v)) {
+        s = std::to_string(*abs);
+      } else {
+        s = std::format("{:.2f}%", 100 * std::get<Ratio>(v).v);
+      }
+      line += std::format(" (default: {})", s);
+    }
+    bool parse(std::string flag2, Args &args) const {
+      auto arg = args.next();
+      if (not arg) {
+        return false;
+      }
+      auto &value = Flag<AbsOrRatio<T>>::value_;
+      auto r = value.parse(arg.value());
+      if (not r.has_value()) {
+        std::println("Error: {} expects number or percent", flag2);
+        return false;
+      }
+      value = r.value();
+      return true;
+    }
+  };
+
   template <typename... A>
   static void help(const A &...a) {
     std::vector<std::string> lines;
@@ -310,6 +388,18 @@ struct Yaml {
       }
       auto str = node.as<std::string>();
       auto r = Bitrate::parse(str);
+      if (not r.has_value()) {
+        error();
+      }
+      value = r.value();
+    }
+
+    template <typename T>
+    void get(AbsOrRatio<T> &value) const {
+      if (not node.IsDefined()) {
+        return;
+      }
+      auto r = value.parse(node.as<std::string>());
       if (not r.has_value()) {
         error();
       }
@@ -505,9 +595,10 @@ struct SimulationConfig {
       {{"--report"}, report, "Print report data for plots"}};
   bool help = false;
   Args::FlagBool flag_help{{{"-h", "--help"}, help, "Show this help message"}};
-  Args::FlagInt<beamsim::example::GroupIndex> flag_local_aggregators{{
+  AbsOrRatio<beamsim::PeerIndex> local_aggregators = {1};
+  Args::FlagAbsOrRatio<beamsim::PeerIndex> flag_local_aggregators{{
       {"-la", "--local-aggregators"},
-      roles_config.group_local_aggregator_count,
+      local_aggregators,
       "Number of local aggregators per group",
   }};
   Args::FlagInt<beamsim::example::GroupIndex> flag_global_aggregators{{
@@ -564,6 +655,19 @@ struct SimulationConfig {
       roles_config.global_aggregator_count = 1;
       roles_config.group_count = 1;
     }
+    auto max_group_local_aggregators =
+        (roles_config.group_count * roles_config.group_validator_count
+         - roles_config.global_aggregator_count)
+        / roles_config.group_count;
+    roles_config.group_local_aggregator_count =
+        local_aggregators.get(roles_config.group_validator_count);
+    if (roles_config.group_local_aggregator_count
+        > max_group_local_aggregators) {
+      std::println("Warning: group local aggregator count {} exceeds {}",
+                   roles_config.group_local_aggregator_count,
+                   max_group_local_aggregators);
+      roles_config.group_local_aggregator_count = max_group_local_aggregators;
+    }
     return true;
   }
 
@@ -584,8 +688,7 @@ struct SimulationConfig {
         .get(roles_config.group_validator_count);
     yaml.at({"roles", "global_aggregator_count"})
         .get(roles_config.global_aggregator_count);
-    yaml.at({"roles", "group_local_aggregator_count"})
-        .get(roles_config.group_local_aggregator_count);
+    yaml.at({"roles", "group_local_aggregator_count"}).get(local_aggregators);
 
     yaml.at({"gossip", "mesh_n"}).get(gossip_config.mesh_n);
     yaml.at({"gossip", "non_mesh_n"}).get(gossip_config.non_mesh_n);
