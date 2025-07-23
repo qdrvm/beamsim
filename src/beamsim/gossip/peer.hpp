@@ -1,5 +1,6 @@
 #pragma once
 
+#include <beamsim/gossip/config.hpp>
 #include <beamsim/gossip/message.hpp>
 #include <beamsim/gossip/view.hpp>
 #include <beamsim/i_simulator.hpp>
@@ -49,7 +50,8 @@ namespace beamsim::gossip {
 
   class Peer {
    public:
-    Peer(IPeer &peer, Random &random) : peer_{peer}, random_{random} {}
+    Peer(IPeer &peer, Random &random, Config &config)
+        : peer_{peer}, random_{random}, config_{config} {}
 
     void start() {
       setTimerHeartbeat();
@@ -68,6 +70,14 @@ namespace beamsim::gossip {
           continue;
         }
         auto message_hash = publish.message->hash();
+        if (config_.idontwant) {
+          for (auto &to_peer : views_.at(publish.topic_index).publishTo()) {
+            if (to_peer == from_peer) {
+              continue;
+            }
+            getBatch(to_peer).idontwant.emplace_back(message_hash);
+          }
+        }
         promises_.erase(message_hash);
         if (not duplicate_cache_.emplace(message_hash).second) {
           continue;
@@ -93,6 +103,12 @@ namespace beamsim::gossip {
           continue;
         }
         getBatch(from_peer).iwant.emplace_back(message_hash);
+      }
+      for (auto &message_hash : gossip_message.idontwant) {
+        if (duplicate_cache_.contains(message_hash)) {
+          continue;
+        }
+        dontwant_.emplace(from_peer, message_hash);
       }
     }
 
@@ -161,6 +177,7 @@ namespace beamsim::gossip {
 
     IPeer &peer_;
     Random &random_;
+    Config &config_;
     std::unordered_map<TopicIndex, View> views_;
     std::unordered_set<MessageHash> duplicate_cache_;
     std::unordered_set<std::pair<PeerIndex, MessageHash>, PairHash> dontwant_;
