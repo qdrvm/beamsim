@@ -278,6 +278,19 @@ namespace beamsim::example {
         if (pulling_.contains(ihave->peer_indices)) {
           return true;
         }
+        
+        // For global aggregators using snark1-pull, don't request snark1 from groups we already have
+        if (role() == Role::GlobalAggregator && shared_state_.snark1_pull) {
+          // Determine which group this snark1 ihave is from
+          auto [source_group, found_group] = getGroupFromPeerIndices(ihave->peer_indices);
+          
+          // If we found the group and it has already contributed, ignore this ihave
+          if (found_group && snark1_received_groups_.find(source_group) != snark1_received_groups_.end()) {
+            report(simulator_, "snark1_ihave_ignored_duplicate_group", source_group);
+            return true;
+          }
+        }
+        
         auto bits1 = pulling_max_.ones();
         pulling_max_.set(ihave->peer_indices);
         auto bits2 = pulling_max_.ones();
@@ -372,6 +385,24 @@ namespace beamsim::example {
       if (not aggregating_snark2.has_value()) {
         return;
       }
+      
+      // For global aggregators, only accept the first snark1 from each group
+      if (role() == Role::GlobalAggregator) {
+        // Determine which group this snark1 came from by checking the peer indices
+        auto [source_group, found_group] = getGroupFromPeerIndices(message.peer_indices);
+        
+        // If we found the group and it has already contributed, ignore this snark1
+        if (found_group && snark1_received_groups_.find(source_group) != snark1_received_groups_.end()) {
+          report(simulator_, "snark1_ignored_duplicate_group", source_group);
+          return;
+        }
+        
+        // Mark this group as having contributed
+        if (found_group) {
+          snark1_received_groups_.insert(source_group);
+        }
+      }
+      
       ++snark1_received;
       aggregating_snark2->peer_indices.set(message.peer_indices);
       report(simulator_,
@@ -452,6 +483,21 @@ namespace beamsim::example {
     Role role() const {
       return shared_state_.roles.roles.at(peer_index_);
     }
+
+    // Helper function to determine which group a BitSet of peer_indices belongs to
+    std::pair<GroupIndex, bool> getGroupFromPeerIndices(const BitSet &peer_indices) const {
+      // Find the first validator in the peer_indices to determine the group
+      for (PeerIndex peer_idx = 0; peer_idx < shared_state_.roles.validator_count; ++peer_idx) {
+        // Check if this peer bit is set in the peer_indices
+        size_t i1 = peer_idx / 8, i2 = peer_idx % 8;
+        if (i1 < peer_indices.limbs_.size() && 
+            (peer_indices.limbs_[i1] & (1 << i2))) {
+          GroupIndex source_group = shared_state_.roles.group_of_validator.at(peer_idx);
+          return {source_group, true};
+        }
+      }
+      return {std::numeric_limits<GroupIndex>::max(), false};
+    }
     MessageForwardFn forwardSignatureDirect(PeerIndex from_peer,
                                             MessagePtr any_message) {
       return [this, from_peer, any_message] {
@@ -479,6 +525,8 @@ namespace beamsim::example {
     std::unordered_set<BitSet> snark1_cache_;
     std::unordered_map<BitSet, MessageForwardFn> pulling_;
     BitSet pulling_max_;
+    // Track which groups have already contributed snark1 (for global aggregators)
+    std::unordered_set<GroupIndex> snark1_received_groups_;
     Thread thread_;
   };
 
