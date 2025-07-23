@@ -33,6 +33,25 @@ namespace beamsim::example {
       }
     }
 
+    bool get(PeerIndex i) const {
+      size_t i1 = i / limb_bits, i2 = i % limb_bits;
+      return i1 < limbs_.size() and (limbs_[i1] >> i2) == 1;
+    }
+
+    std::optional<PeerIndex> findOne(PeerIndex begin) const {
+      if (get(begin)) {
+        return begin;
+      }
+      for (PeerIndex i = begin / limb_bits; i < limbs_.size(); ++i) {
+        auto &limb = limbs_.at(i);
+        if (limb == 0) {
+          continue;
+        }
+        return limb_bits - 1 - std::countl_zero(limb);
+      }
+      return std::nullopt;
+    }
+
     PeerIndex ones() const {
       PeerIndex n = 0;
       for (auto &limb : limbs_) {

@@ -38,17 +38,20 @@ namespace beamsim::gossip {
       encodeTo(to, publish);
       encodeTo(to, ihave);
       encodeTo(to, iwant);
+      encodeTo(to, idontwant);
     }
     static MessagePtr decode(MessageDecodeFrom &from) {
       auto message = std::make_shared<Message>();
       decodeFrom(from, message->publish);
       decodeFrom(from, message->ihave);
       decodeFrom(from, message->iwant);
+      decodeFrom(from, message->idontwant);
       return message;
     }
 
     std::vector<Publish> publish;
     std::vector<MessageHash> ihave;
     std::vector<MessageHash> iwant;
+    std::vector<MessageHash> idontwant;
   };
 }  // namespace beamsim::gossip
