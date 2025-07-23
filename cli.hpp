@@ -545,6 +545,12 @@ struct SimulationConfig {
       shuffle,
       "shuffle validators from same group to different routers",
   }};
+  bool snark1_group_once = false;
+  Args::FlagBool flag_snark1_group_once{{
+      {"--snark1-group-once"},
+      snark1_group_once,
+      "global aggregator accepts only accepts first snark1 from group",
+  }};
   bool snark1_pull = false;
   Args::FlagBool flag_snark1_pull{{
       {"--snark1-pull"},
@@ -614,6 +620,7 @@ struct SimulationConfig {
              flag_group_count,
              flag_validators_per_group,
              flag_shuffle,
+             flag_snark1_group_once,
              flag_snark1_pull,
              flag_signature_half_direct,
              flag_snark1_half_direct,
@@ -676,6 +683,7 @@ struct SimulationConfig {
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
     yaml.at({"shuffle"}).get(shuffle);
+    yaml.at({"snark1_group_once"}).get(snark1_group_once);
     yaml.at({"snark1_pull"}).get(snark1_pull);
     yaml.at({"signature_half_direct"}).get(signature_half_direct);
     yaml.at({"snark1_half_direct"}).get(snark1_half_direct);
