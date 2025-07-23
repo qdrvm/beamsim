@@ -70,7 +70,9 @@ namespace beamsim::gossip {
           continue;
         }
         auto message_hash = publish.message->hash();
-        if (config_.idontwant) {
+        if (config_.idontwant
+            and (config_.idontwant_duplicate
+                 or not duplicate_cache_.contains(message_hash))) {
           for (auto &to_peer : views_.at(publish.topic_index).publishTo()) {
             if (to_peer == from_peer) {
               continue;
