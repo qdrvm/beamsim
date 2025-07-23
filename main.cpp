@@ -158,6 +158,7 @@ namespace beamsim::example {
 
   struct SharedState {
     const Roles &roles;
+    gossip::Config gossip_config;
     bool snark1_group_once;
     bool snark1_pull;
     bool signature_half_direct;
@@ -620,7 +621,7 @@ namespace beamsim::example {
                PeerIndex index,
                SharedState &shared_state,
                Random &random)
-        : PeerBase{simulator, index, shared_state}, gossip_{*this, random} {}
+        : PeerBase{simulator, index, shared_state}, gossip_{*this, random,shared_state_.gossip_config} {}
 
     // IPeer
     void onStart() override {
@@ -779,6 +780,7 @@ void run_simulation(const SimulationConfig &config) {
     beamsim::Stopwatch t_run;
     beamsim::example::SharedState shared_state{
         .roles = roles,
+        .gossip_config = config.gossip_config,
         .snark1_group_once = config.snark1_group_once,
         .snark1_pull = config.snark1_pull,
         .signature_half_direct = config.signature_half_direct,
