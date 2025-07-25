@@ -105,7 +105,7 @@ run_exe_time = None
 
 
 def run(
-    b=None, t=None, g=None, gv=None, shuffle=False, mpi=False, c=None, la=None, ga=None
+    b=None, t=None, g=None, gv=None, shuffle=False, mpi=False, c=None, la=None, ga=None, local_aggregation_only=False
 ):
     if not isinstance(mpi, bool) and mpi > os.cpu_count():
         warnings.warn(
@@ -127,7 +127,7 @@ def run(
         run_exe_time = exe_time
         run_cache.clear()
     c_key = None if c is None else (c, os.stat(c).st_mtime)
-    key = (b, t, g, gv, shuffle, mpi, c_key, la, ga)
+    key = (b, t, g, gv, shuffle, mpi, c_key, la, ga, local_aggregation_only)
     output = run_cache.get(key, None)
     if output is None:
         cmd = [
@@ -142,9 +142,10 @@ def run(
             *([] if t is None else ["-t", t]),
             *([] if g is None else ["-g", str(g)]),
             *([] if gv is None else ["-gv", str(gv)]),
-            *("--shuffle" if shuffle else []),
+            *(["--shuffle"] if shuffle else []),
             *(["-la", str(la)] if la is not None else []),
             *(["-ga", str(ga)] if ga is not None else []),
+            *(["--local-aggregation-only"] if local_aggregation_only else []),
             "--report",
         ]
         print(f"run: {' '.join(cmd)}")
