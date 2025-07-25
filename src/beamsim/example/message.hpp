@@ -17,12 +17,16 @@ namespace beamsim::example {
       decodeFrom(from, v.limbs_);
     }
 
+    static auto split(PeerIndex i) {
+      return std::make_pair(i / limb_bits, Limb{1} << (i % limb_bits));
+    }
+
     void set(PeerIndex i) {
-      size_t i1 = i / limb_bits, i2 = i % limb_bits;
+      auto [i1, mask] = split(i);
       if (limbs_.size() <= i1) {
         limbs_.resize(i1 + 1);
       }
-      limbs_[i1] |= Limb{1} << i2;
+      limbs_.at(i1) |= mask;
     }
     void set(const BitSet &other) {
       if (limbs_.size() < other.limbs_.size()) {
@@ -34,8 +38,8 @@ namespace beamsim::example {
     }
 
     bool get(PeerIndex i) const {
-      size_t i1 = i / limb_bits, i2 = i % limb_bits;
-      return i1 < limbs_.size() and (limbs_[i1] >> i2) == 1;
+      auto [i1, mask] = split(i);
+      return i1 < limbs_.size() and (limbs_.at(i1) & mask) != 0;
     }
 
     std::optional<PeerIndex> findOne(PeerIndex begin) const {

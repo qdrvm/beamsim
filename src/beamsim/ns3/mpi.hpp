@@ -5,6 +5,7 @@
 #endif
 
 #include <cstdint>
+#include <string>
 
 namespace beamsim {
   using MpiIndex = uint32_t;

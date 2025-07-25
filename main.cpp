@@ -167,6 +167,7 @@ namespace beamsim::example {
     bool stop_on_create_snark1;
     PeerIndex snark2_received = 0;
     bool done = false;
+    std::optional<std::pair<uint32_t, uint32_t>> signature_duplicates;
 
     PeerIndex snark1_threshold(const Roles::Group &group) const {
       return group.validators.size() * consts().snark1_threshold;
@@ -355,6 +356,10 @@ namespace beamsim::example {
       }
       auto snark1 = std::move(aggregating_snark1.value());
       aggregating_snark1.reset();
+      if (not shared_state_.signature_duplicates) {
+        shared_state_.signature_duplicates.emplace(signature_duplicates,
+                                                   signatures_seen.ones());
+      }
       thread_.run(simulator_,
                   timeSeconds(received / consts().aggregation_rate_per_sec),
                   [this, snark1{std::move(snark1)}]() mutable {
@@ -509,11 +514,42 @@ namespace beamsim::example {
       };
     }
 
+    void checkSignatureDuplicates(const MessagePtr &any_message) {
+      if (not aggregating_snark1.has_value()) {
+        return;
+      }
+      if (auto *message = dynamic_cast<Message *>(any_message.get())) {
+        if (auto *signature =
+                std::get_if<MessageSignature>(&message->variant)) {
+          if (signatures_seen.get(signature->peer_index)) {
+            ++signature_duplicates;
+          } else {
+            signatures_seen.set(signature->peer_index);
+            assert2(signatures_seen.get(signature->peer_index));
+          }
+        }
+        return;
+      }
+      if (auto *message = dynamic_cast<gossip::Message *>(any_message.get())) {
+        for (auto &publish : message->publish) {
+          checkSignatureDuplicates(publish.message);
+        }
+        return;
+      }
+      if (auto *message = dynamic_cast<grid::Message *>(any_message.get())) {
+        checkSignatureDuplicates(message->message);
+        return;
+      }
+      abort();
+    }
+
     SharedState &shared_state_;
     GroupIndex group_index_;
     const Roles::Group &group_;
     bool snark2_received = false;
     std::optional<MessageSnark1> aggregating_snark1;
+    BitSet signatures_seen;
+    uint32_t signature_duplicates = 0;
     // TODO: remove when aggregating multiple times
     size_t snark1_received = 0;
     std::optional<MessageSnark2> aggregating_snark2;
@@ -551,6 +587,7 @@ namespace beamsim::example {
 
     // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      checkSignatureDuplicates(any_message);
       auto forward_snark1 = [this, from_peer, any_message] {
         // global aggregator forwards snark1 from local aggregator to global aggregators
         if (shared_state_.roles.roles.at(from_peer) == Role::LocalAggregator
@@ -621,7 +658,8 @@ namespace beamsim::example {
                PeerIndex index,
                SharedState &shared_state,
                Random &random)
-        : PeerBase{simulator, index, shared_state}, gossip_{*this, random,shared_state_.gossip_config} {}
+        : PeerBase{simulator, index, shared_state},
+          gossip_{*this, random, shared_state_.gossip_config} {}
 
     // IPeer
     void onStart() override {
@@ -629,6 +667,7 @@ namespace beamsim::example {
       gossip_.start();
     }
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      checkSignatureDuplicates(any_message);
       if (onMessagePull(from_peer, any_message, nullptr)) {
         return;
       }
@@ -681,6 +720,7 @@ namespace beamsim::example {
 
     // IPeer
     void onMessage(PeerIndex from_peer, MessagePtr any_message) override {
+      checkSignatureDuplicates(any_message);
       if (onMessagePull(from_peer, any_message, nullptr)) {
         return;
       }
@@ -899,6 +939,12 @@ void run_simulation(const SimulationConfig &config) {
                    done ? "SUCCESS" : "FAILURE");
     }
     metrics.end(simulator_time);
+    if (shared_state.signature_duplicates) {
+      auto [signature_duplicates, signatures] =
+          shared_state.signature_duplicates.value();
+      beamsim::example::report(
+          simulator, "signature-duplicates", signature_duplicates, signatures);
+    }
     beamsim::example::report_flush();
   };
 
