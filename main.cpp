@@ -167,7 +167,7 @@ namespace beamsim::example {
     bool stop_on_create_snark1;
     PeerIndex snark2_received = 0;
     bool done = false;
-    uint32_t signature_duplicates;
+    std::optional<std::pair<uint32_t, uint32_t>> signature_duplicates;
 
     PeerIndex snark1_threshold(const Roles::Group &group) const {
       return group.validators.size() * consts().snark1_threshold;
@@ -356,6 +356,10 @@ namespace beamsim::example {
       }
       auto snark1 = std::move(aggregating_snark1.value());
       aggregating_snark1.reset();
+      if (not shared_state_.signature_duplicates) {
+        shared_state_.signature_duplicates.emplace(signature_duplicates,
+                                                   signatures_seen.ones());
+      }
       thread_.run(simulator_,
                   timeSeconds(received / consts().aggregation_rate_per_sec),
                   [this, snark1{std::move(snark1)}]() mutable {
@@ -511,16 +515,17 @@ namespace beamsim::example {
     }
 
     void checkSignatureDuplicates(const MessagePtr &any_message) {
-      if (role() != Role::LocalAggregator) {
+      if (not aggregating_snark1.has_value()) {
         return;
       }
       if (auto *message = dynamic_cast<Message *>(any_message.get())) {
         if (auto *signature =
                 std::get_if<MessageSignature>(&message->variant)) {
           if (signatures_seen.get(signature->peer_index)) {
-            ++shared_state_.signature_duplicates;
+            ++signature_duplicates;
           } else {
             signatures_seen.set(signature->peer_index);
+            assert2(signatures_seen.get(signature->peer_index));
           }
         }
         return;
@@ -544,6 +549,7 @@ namespace beamsim::example {
     bool snark2_received = false;
     std::optional<MessageSnark1> aggregating_snark1;
     BitSet signatures_seen;
+    uint32_t signature_duplicates = 0;
     // TODO: remove when aggregating multiple times
     size_t snark1_received = 0;
     std::optional<MessageSnark2> aggregating_snark2;
@@ -933,10 +939,12 @@ void run_simulation(const SimulationConfig &config) {
                    done ? "SUCCESS" : "FAILURE");
     }
     metrics.end(simulator_time);
-    beamsim::example::report(simulator,
-                             "signature-duplicates",
-                             shared_state.signature_duplicates,
-                             roles.validator_count);
+    if (shared_state.signature_duplicates) {
+      auto [signature_duplicates, signatures] =
+          shared_state.signature_duplicates.value();
+      beamsim::example::report(
+          simulator, "signature-duplicates", signature_duplicates, signatures);
+    }
     beamsim::example::report_flush();
   };
 
