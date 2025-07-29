@@ -243,6 +243,12 @@ namespace beamsim::example {
       }
       thread_.run(simulator_, consts().signature_time, [this] {
         MessageSignature signature{peer_index_};
+        
+        // For idontwant mode, attach our current signature knowledge
+        if (shared_state_.gossip_config.idontwant) {
+          signature.seen_signatures = signatures_seen;
+        }
+        
         _onMessageSignature(signature);
         sendSignature(std::make_shared<Message>(std::move(signature)));
       });
@@ -348,6 +354,13 @@ namespace beamsim::example {
       if (not aggregating_snark1.has_value()) {
         return;
       }
+      
+      // For gossip topology with idontwant, track signature for optimization
+      if (shared_state_.gossip_config.idontwant) {
+        // Update our knowledge of signatures we've seen
+        signatures_seen.set(message.peer_index);
+      }
+      
       aggregating_snark1->peer_indices.set(message.peer_index);
       PeerIndex threshold = shared_state_.snark1_threshold(group_);
       auto received = aggregating_snark1->peer_indices.ones();
@@ -678,6 +691,10 @@ namespace beamsim::example {
             auto &message = dynamic_cast<Message &>(*any_message);
             if (auto *signature =
                     std::get_if<MessageSignature>(&message.variant)) {
+              // For idontwant mode, update our signature tracking
+              if (shared_state_.gossip_config.idontwant) {
+                gossip_.updateOwnSignature(signature->peer_index);
+              }
               onMessageSignature(*signature, std::move(forward));
             } else if (std::holds_alternative<MessageIhaveSnark1>(
                            message.variant)) {
@@ -697,6 +714,16 @@ namespace beamsim::example {
       if (signatureHalfDirect(message) or signatureDirect(message)) {
         return;
       }
+      
+      // For idontwant mode, update our signature tracking before sending
+      if (shared_state_.gossip_config.idontwant) {
+        if (auto example_msg = dynamic_cast<Message*>(message.get())) {
+          if (auto *signature = std::get_if<MessageSignature>(&example_msg->variant)) {
+            gossip_.updateOwnSignature(signature->peer_index);
+          }
+        }
+      }
+      
       gossip_.gossip(topicSignature(shared_state_.roles.group_of_validator.at(
                          peer_index_)),
                      std::move(message));

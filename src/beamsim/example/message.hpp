@@ -5,6 +5,7 @@
 #include <beamsim/peer_index.hpp>
 #include <beamsim/std_hash.hpp>
 #include <bit>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -71,8 +72,33 @@ namespace beamsim::example {
     std::vector<Limb> limbs_;
   };
 
+  // Forward declarations for template specializations
+  void encodeTo(beamsim::MessageEncodeTo &to, const std::optional<BitSet> &v);
+  void decodeFrom(beamsim::MessageDecodeFrom &from, std::optional<BitSet> &v);
+
+  // Implementations
+  inline void encodeTo(beamsim::MessageEncodeTo &to, const std::optional<BitSet> &v) {
+    beamsim::encodeTo(to, v.has_value());
+    if (v.has_value()) {
+      encodeTo(to, v.value());
+    }
+  }
+  
+  inline void decodeFrom(beamsim::MessageDecodeFrom &from, std::optional<BitSet> &v) {
+    bool has_value;
+    beamsim::decodeFrom(from, has_value);
+    if (has_value) {
+      BitSet bitset;
+      decodeFrom(from, bitset);
+      v = std::move(bitset);
+    } else {
+      v = std::nullopt;
+    }
+  }
+
   struct MessageSignature {
     PeerIndex peer_index;
+    std::optional<BitSet> seen_signatures; // Bitfield of signatures this peer has seen (for idontwant mode)
   };
   struct MessageIhaveSnark1 {
     BitSet peer_indices;
@@ -117,6 +143,7 @@ namespace beamsim::example {
       encodeTo(to, (uint8_t)variant.index());
       if (auto *signature = std::get_if<MessageSignature>(&variant)) {
         encodeTo(to, signature->peer_index);
+        encodeTo(to, signature->seen_signatures);
       } else if (auto *snark1 = std::get_if<MessageIhaveSnark1>(&variant)) {
         encodeTo(to, snark1->peer_indices);
       } else if (auto *snark1 = std::get_if<MessageIwantSnark1>(&variant)) {
@@ -134,6 +161,7 @@ namespace beamsim::example {
         case 0: {
           MessageSignature signature;
           decodeFrom(from, signature.peer_index);
+          decodeFrom(from, signature.seen_signatures);
           return std::make_shared<Message>(std::move(signature));
         }
         case 1: {

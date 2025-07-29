@@ -5,6 +5,7 @@
 #include <beamsim/gossip/view.hpp>
 #include <beamsim/i_simulator.hpp>
 #include <beamsim/std_hash.hpp>
+#include <beamsim/example/message.hpp>
 #include <map>
 #include <ranges>
 #include <unordered_map>
@@ -60,6 +61,21 @@ namespace beamsim::gossip {
     void subscribe(TopicIndex topic_index, View &&view) {
       views_.emplace(topic_index, std::move(view));
     }
+    
+    // Get the current signature bitfield for this peer (for idontwant mode)
+    const beamsim::example::BitSet& getSignatureBitfield() const {
+      auto it = peer_signatures_.find(peer_.peer_index_);
+      if (it != peer_signatures_.end()) {
+        return it->second;
+      }
+      static const beamsim::example::BitSet empty_bitset;
+      return empty_bitset;
+    }
+    
+    // Update our own signature bitfield when we see a new signature
+    void updateOwnSignature(PeerIndex signature_peer_index) {
+      peer_signatures_[peer_.peer_index_].set(signature_peer_index);
+    }
 
     void onMessage(PeerIndex from_peer,
                    const MessagePtr &any_message,
@@ -76,6 +92,29 @@ namespace beamsim::gossip {
               continue;
             }
             getBatch(to_peer).idontwant.emplace_back(message_hash);
+          }
+          
+          // For signature messages, extract signature information and update peer knowledge
+          if (isSignatureMessage(publish.message)) {
+            try {
+              auto &example_message = dynamic_cast<const beamsim::example::Message &>(*publish.message);
+              if (auto *signature = std::get_if<beamsim::example::MessageSignature>(&example_message.variant)) {
+                // Update our knowledge that the sender has this signature
+                peer_signatures_[from_peer].set(signature->peer_index);
+                
+                // If the message contains piggybacked signature information, update our knowledge
+                if (signature->seen_signatures.has_value()) {
+                  // Update our knowledge of what signatures the sender has
+                  updatePeerSignatureKnowledge(from_peer, signature->seen_signatures.value());
+                }
+                
+                // When forwarding, add our own signature bitfield to help others know what we have
+                // This is the "piggybacking" part - we attach our signature knowledge when forwarding
+                attachSignatureBitfieldToForward(publish.topic_index);
+              }
+            } catch (const std::bad_cast&) {
+              // Not an example message, ignore
+            }
           }
         }
         promises_.erase(message_hash);
@@ -117,18 +156,95 @@ namespace beamsim::gossip {
       if (not duplicate_cache_.emplace(message_hash).second) {
         return;
       }
+      
+      // Check if this is a signature message and handle bitfield piggybacking
+      if (config_.idontwant && isSignatureMessage(any_message)) {
+        handleSignaturePiggybacking(topic_index, any_message);
+      }
+      
       _gossip({topic_index, peer_.peer_index_, any_message}, message_hash);
     }
 
    private:
+    bool isSignatureMessage(const MessagePtr &message) {
+      // Check if the message is a signature message from beamsim::example
+      // We need to cast to check the variant
+      try {
+        auto &example_message = dynamic_cast<const beamsim::example::Message &>(*message);
+        return std::holds_alternative<beamsim::example::MessageSignature>(example_message.variant);
+      } catch (const std::bad_cast&) {
+        return false;
+      }
+    }
+    
+    void handleSignaturePiggybacking(TopicIndex /*topic_index*/, const MessagePtr &message) {
+      // Update our knowledge of signatures when we see a signature message
+      try {
+        auto &example_message = dynamic_cast<const beamsim::example::Message &>(*message);
+        if (auto *signature = std::get_if<beamsim::example::MessageSignature>(&example_message.variant)) {
+          // Track which signatures this peer has seen
+          auto peer_index = signature->peer_index;
+          peer_signatures_[peer_.peer_index_].set(peer_index);
+          
+          // If the message has signature bitfield information, update our knowledge
+          if (signature->seen_signatures.has_value()) {
+            peer_signatures_[peer_.peer_index_].set(signature->seen_signatures.value());
+          }
+        }
+      } catch (const std::bad_cast&) {
+        // Not an example message, ignore
+      }
+    }
+    
+    void updatePeerSignatureKnowledge(PeerIndex from_peer, const beamsim::example::BitSet &signature_bitfield) {
+      // Update our knowledge of what signatures the sending peer has
+      peer_signatures_[from_peer] = signature_bitfield;
+    }
+    
+    bool shouldSendSignatureToPeer(PeerIndex to_peer, PeerIndex signature_peer_index) {
+      // Check if the target peer already has this signature
+      auto it = peer_signatures_.find(to_peer);
+      if (it != peer_signatures_.end()) {
+        return !it->second.get(signature_peer_index);
+      }
+      // If we don't know what signatures they have, send it
+      return true;
+    }
+
     void _gossip(const Publish &publish, MessageHash message_hash) {
       mcache_.emplace(message_hash, publish);
       history_[publish.topic_index].add(message_hash);
+      
+      // size_t total_peers = views_.at(publish.topic_index).publishTo().size();
+      size_t skipped_peers = 0;
+      
       for (auto &to_peer : views_.at(publish.topic_index).publishTo()) {
         if (dontwant_.contains({to_peer, message_hash})) {
           continue;
         }
+        
+        // For signature messages with idontwant enabled, check if peer already has the signature
+        if (config_.idontwant && isSignatureMessage(publish.message)) {
+          try {
+            auto &example_message = dynamic_cast<const beamsim::example::Message &>(*publish.message);
+            if (auto *signature = std::get_if<beamsim::example::MessageSignature>(&example_message.variant)) {
+              if (!shouldSendSignatureToPeer(to_peer, signature->peer_index)) {
+                skipped_peers++;
+                continue; // Skip sending this signature to this peer
+              }
+            }
+          } catch (const std::bad_cast&) {
+            // Not an example message, proceed normally
+          }
+        }
+        
         getBatch(to_peer).publish.emplace_back(publish);
+      }
+      
+      // Report on idontwant efficiency for signature messages
+      if (config_.idontwant && isSignatureMessage(publish.message) && skipped_peers > 0) {
+        // This would be reported if we had access to the reporting mechanism
+        // report("signature_idontwant_skipped", skipped_peers, total_peers);
       }
     }
 
@@ -168,11 +284,21 @@ namespace beamsim::gossip {
           }
         }
       }
-      for (auto &history : history_ | std::views::values) {
+      for (auto &[topic, history] : history_) {
         history.shift([this](const MessageHash &message_hash) {
           mcache_.erase(message_hash);
         });
       }
+    }
+
+    void attachSignatureBitfieldToForward(TopicIndex /*topic_index*/) {
+      // When forwarding signature messages, we can piggyback our own signature bitfield
+      // to inform other peers about which signatures we have
+      // This helps with the idontwant optimization for signatures
+      
+      // For now, we rely on the existing peer_signatures_ tracking
+      // In a full implementation, we would add this to the gossip message
+      // but for this approach we track it separately
     }
 
     IPeer &peer_;
@@ -185,5 +311,7 @@ namespace beamsim::gossip {
     std::unordered_set<MessageHash> promises_;
     std::unordered_map<MessageHash, Publish> mcache_;
     std::unordered_map<TopicIndex, History> history_;
+    // Track which signatures each peer has for idontwant mode
+    std::unordered_map<PeerIndex, beamsim::example::BitSet> peer_signatures_;
   };
 }  // namespace beamsim::gossip
