@@ -2,6 +2,10 @@
 
 #include <bit>
 #include <cstdint>
+#include <cstring>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace beamsim {
