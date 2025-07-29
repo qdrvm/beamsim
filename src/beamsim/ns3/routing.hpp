@@ -9,6 +9,8 @@
 #include <beamsim/routers.hpp>
 #include <beamsim/std_hash.hpp>
 #include <beamsim/time.hpp>
+#include <iostream>
+#include <print>
 #include <unordered_set>
 
 namespace beamsim::ns3_ {
@@ -280,7 +282,7 @@ namespace beamsim::ns3_ {
           }
         }
         if (mpiIsMain()) {
-          std::println("routing table rules: {}",
+          std::println(std::cout, "routing table rules: {}",
                        ns3_::countRoutingTableRules(routers_));
         }
       }
