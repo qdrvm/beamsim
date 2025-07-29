@@ -161,6 +161,7 @@ namespace beamsim::example {
     gossip::Config gossip_config;
     bool snark1_group_once;
     bool snark1_pull;
+    bool snark1_pull_early;
     bool signature_half_direct;
     bool snark1_half_direct;
     bool signature_direct;
@@ -314,6 +315,11 @@ namespace beamsim::example {
         return true;
       }
       if (auto *iwant = std::get_if<MessageIwantSnark1>(&message->variant)) {
+        if (shared_state_.snark1_pull_early
+            and not snark1_cache_.contains(iwant->peer_indices)) {
+          will_want_[iwant->peer_indices].emplace_back(from_peer);
+          return true;
+        }
         assert2(snark1_cache_.contains(iwant->peer_indices));
         send(from_peer,
              std::make_shared<Message>(
@@ -360,6 +366,10 @@ namespace beamsim::example {
         shared_state_.signature_duplicates.emplace(signature_duplicates,
                                                    signatures_seen.ones());
       }
+      if (shared_state_.snark1_pull and shared_state_.snark1_pull_early) {
+        sendSnark1(
+            std::make_shared<Message>(MessageIhaveSnark1{snark1.peer_indices}));
+      }
       thread_.run(simulator_,
                   timeSeconds(received / consts().aggregation_rate_per_sec),
                   [this, snark1{std::move(snark1)}]() mutable {
@@ -374,8 +384,10 @@ namespace beamsim::example {
                     }
                     _onMessageSnark1(snark1);
                     if (shared_state_.snark1_pull) {
-                      sendSnark1(std::make_shared<Message>(
-                          MessageIhaveSnark1{snark1.peer_indices}));
+                      if (not shared_state_.snark1_pull_early) {
+                        sendSnark1(std::make_shared<Message>(
+                            MessageIhaveSnark1{snark1.peer_indices}));
+                      }
                       snark1_cache_.emplace(std::move(snark1.peer_indices));
                     } else {
                       sendSnark1(std::make_shared<Message>(std::move(snark1)));
@@ -392,6 +404,17 @@ namespace beamsim::example {
                   });
     }
     void _onMessageSnark1(const MessageSnark1 &message) {
+      if (shared_state_.snark1_pull and shared_state_.snark1_pull_early) {
+        auto want = will_want_.extract(message.peer_indices);
+        if (want) {
+          auto ihave = std::make_shared<Message>(
+              MessageIhaveSnark1{message.peer_indices});
+          for (auto &peer_to : want.mapped()) {
+            send(peer_to, ihave);
+          }
+        }
+      }
+
       if (not aggregating_snark2.has_value()) {
         return;
       }
@@ -555,6 +578,7 @@ namespace beamsim::example {
     std::optional<MessageSnark2> aggregating_snark2;
     std::unordered_set<BitSet> snark1_cache_;
     std::unordered_map<BitSet, MessageForwardFn> pulling_;
+    std::unordered_map<BitSet, std::vector<PeerIndex>> will_want_;
     BitSet pulling_max_;
     // Track which groups have already contributed snark1 (for global aggregators)
     BitSet snark1_received_groups_;
@@ -823,6 +847,7 @@ void run_simulation(const SimulationConfig &config) {
         .gossip_config = config.gossip_config,
         .snark1_group_once = config.snark1_group_once,
         .snark1_pull = config.snark1_pull,
+        .snark1_pull_early = config.snark1_pull_early,
         .signature_half_direct = config.signature_half_direct,
         .snark1_half_direct = config.snark1_half_direct,
         .signature_direct = config.signature_direct,
