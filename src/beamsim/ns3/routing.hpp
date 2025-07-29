@@ -275,7 +275,6 @@ namespace beamsim::ns3_ {
           ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
           if (mpiIsMain()) {
             std::println(
-                std::cout,
                 "PopulateRoutingTables for {} peers and {} routers took {}ms",
                 peers_.GetN(),
                 routers_.GetN(),
