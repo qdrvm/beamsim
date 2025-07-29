@@ -701,6 +701,8 @@ struct SimulationConfig {
     yaml.at({"gossip", "mesh_n"}).get(gossip_config.mesh_n);
     yaml.at({"gossip", "non_mesh_n"}).get(gossip_config.non_mesh_n);
     yaml.at({"gossip", "idontwant"}).get(gossip_config.idontwant);
+    yaml.at({"gossip", "idontwant_duplicate"})
+        .get(gossip_config.idontwant_duplicate);
 
     auto &consts = beamsim::consts();
     yaml.at({"consts", "signature_time"}).get(consts.signature_time);
