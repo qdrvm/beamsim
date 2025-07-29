@@ -9,6 +9,8 @@
 #include <beamsim/routers.hpp>
 #include <beamsim/std_hash.hpp>
 #include <beamsim/time.hpp>
+#include <iostream>
+#include <print>
 #include <unordered_set>
 
 namespace beamsim::ns3_ {
@@ -273,6 +275,7 @@ namespace beamsim::ns3_ {
           ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
           if (mpiIsMain()) {
             std::println(
+                std::cout,
                 "PopulateRoutingTables for {} peers and {} routers took {}ms",
                 peers_.GetN(),
                 routers_.GetN(),
@@ -280,7 +283,7 @@ namespace beamsim::ns3_ {
           }
         }
         if (mpiIsMain()) {
-          std::println("routing table rules: {}",
+          std::println(std::cout, "routing table rules: {}",
                        ns3_::countRoutingTableRules(routers_));
         }
       }

@@ -11,7 +11,6 @@ add_compile_options(
   -Wextra
   -Woverloaded-virtual
   -Wnull-dereference
-  -Werror=unused-lambda-capture
   -Werror=return-type
   -Werror=sign-compare
   -Werror=mismatched-tags
