@@ -3,6 +3,7 @@
 #include <xxhash.h>
 
 #include <beamsim/assert.hpp>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <span>
