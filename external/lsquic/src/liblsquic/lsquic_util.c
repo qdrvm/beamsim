@@ -69,7 +69,7 @@ lsquic_init_timers (void)
 
 
 lsquic_time_t
-lsquic_time_now (void)
+_lsquic_time_now (void)
 {
 #if LSQUIC_COUNT_TIME_CALLS
     ++n_time_now_calls;

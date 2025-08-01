@@ -44,7 +44,7 @@ struct lsquic_hash
 
 static uint64_t get_seed()
 {
-    static uint64_t seed = 0;
+    static uint64_t seed = 1;
     if (seed == 0)
     {
 #if defined(WIN32)

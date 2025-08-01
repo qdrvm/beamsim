@@ -42,8 +42,14 @@ find_package(ns3 CONFIG)
 if(ns3_FOUND)
   find_package(MPI REQUIRED)
 
+  include(external/lsquic.cmake)
+
+  add_executable(lsquic-test lsquic-test.cpp)
+  target_link_libraries(lsquic-test lsquic)
+
   target_compile_definitions(beamsim PRIVATE ns3_FOUND)
   target_link_libraries(beamsim
+    lsquic
     ns3::applications
     ns3::core
     ns3::internet

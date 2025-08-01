@@ -621,7 +621,8 @@ namespace beamsim::example {
                PeerIndex index,
                SharedState &shared_state,
                Random &random)
-        : PeerBase{simulator, index, shared_state}, gossip_{*this, random,shared_state_.gossip_config} {}
+        : PeerBase{simulator, index, shared_state},
+          gossip_{*this, random, shared_state_.gossip_config} {}
 
     // IPeer
     void onStart() override {
@@ -924,6 +925,7 @@ void run_simulation(const SimulationConfig &config) {
     case SimulationConfig::Backend::NS3_DIRECT: {
 #ifdef ns3_FOUND
       beamsim::ns3_::Simulator simulator{metrics_ptr};
+      simulator.setProtocol(config.protocol);
       if (config.backend == SimulationConfig::Backend::NS3) {
         simulator.routing_.initRouters(routers);
       } else {

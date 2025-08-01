@@ -282,7 +282,7 @@ namespace beamsim::ns3_ {
           }
         }
         if (mpiIsMain()) {
-          std::println(std::cout, "routing table rules: {}",
+          std::println("routing table rules: {}",
                        ns3_::countRoutingTableRules(routers_));
         }
       }
