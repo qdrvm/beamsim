@@ -99,15 +99,13 @@ target_include_directories(lsquic PUBLIC
   ${lsquic_dir}/include
   ${lsquic_dir}/src/liblsquic/ls-qpack
   ${lsquic_dir}/src/lshpack
-  ${OpenSSL_DIR}/include
-  ${ZLIB_DIR}/include
 )
 target_link_libraries(lsquic
   ns3::applications
   ns3::internet
   ns3::point-to-point
-  ${OpenSSL_DIR}/lib/libcrypto.dylib
-  ${OpenSSL_DIR}/lib/libssl.dylib
+  ssl
+  crypto
   xxhash
-  ${ZLIB_DIR}/lib/libz.a
+  zlibstatic
 )
