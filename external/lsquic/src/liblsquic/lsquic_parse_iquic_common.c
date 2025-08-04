@@ -10,7 +10,6 @@
 #include <sys/queue.h>
 #include <sys/types.h>
 
-#include <openssl/rand.h>
 #include <openssl/aead.h>
 
 #include "lsquic_types.h"

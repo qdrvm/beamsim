@@ -12,7 +12,6 @@
 
 #include <openssl/chacha.h>
 #include <openssl/hkdf.h>
-#include <openssl/rand.h>
 #include <openssl/ssl.h>
 
 #include "fiu-local.h"

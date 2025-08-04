@@ -86,6 +86,7 @@ add_library(lsquic
   ${lsquic_dir}/src/liblsquic/lsquic_version.c
   ${lsquic_dir}/src/lshpack/lshpack.c
 
+  ${lsquic_dir}/src/boringssl.cpp
   ${lsquic_dir}/src/lsquic-ns3.cpp
 )
 target_compile_definitions(lsquic PRIVATE
