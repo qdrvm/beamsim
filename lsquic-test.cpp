@@ -115,20 +115,22 @@ struct App : ns3::Application {
 
   void setReadWrite(size_t index) {
     auto &socket = sockets_.at(index);
+    auto &writing = state_.writing.at(index_).at(index);
     socket->SetRecvCallback([this, index](SocketPtr) { pollRead(index); });
     socket->SetSendCallback(
-        [this, index](SocketPtr, uint32_t) { pollWrite(index); });
+        [this, index, socket, &writing](SocketPtr, uint32_t) {
+          pollWrite(index, socket, writing);
+        });
   }
 
   void write(size_t index, size_t size) {
-    state_.writing.at(index_).at(index) = size;
-    pollWrite(index);
+    auto socket = sockets_.at(index);
+    auto &writing = state_.writing.at(index_).at(index);
+    writing = size;
+    pollWrite(index, socket, writing);
   }
 
-  void pollWrite(size_t index) {
-    auto socket = sockets_.at(index);
-    auto &writing1 = state_.writing.at(index_);
-    auto &writing = writing1.at(index);
+  void pollWrite(size_t index, SocketPtr socket, size_t &writing) {
     if (writing == 0) {
       return;
     }

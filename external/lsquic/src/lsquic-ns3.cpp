@@ -356,9 +356,11 @@ namespace ns3 {
       NS_ASSERT(server_.has_value() and not server_.value());
       NS_ASSERT(ls_stream_ != nullptr);
       maxSize = std::min(maxSize, kWindowSize);
-      factory_->buffer_.resize(maxSize);
-      auto r = lsquic_stream_read(
-          ls_stream_, factory_->buffer_.data(), factory_->buffer_.size());
+      if (factory_->buffer_.size() < maxSize) {
+        factory_->buffer_.resize(maxSize);
+      }
+      auto r =
+          lsquic_stream_read(ls_stream_, factory_->buffer_.data(), maxSize);
       if (r == -1 and errno == EWOULDBLOCK) {
         errno_ = ERROR_AGAIN;
         return nullptr;
@@ -475,13 +477,16 @@ namespace ns3 {
   void LsquicEngine::pollRead(Ptr<Socket>) {
     Address from_address;
     while (auto packet = socket_->RecvFrom(from_address)) {
-      factory_->buffer_.resize(packet->GetSize());
-      packet->CopyData(factory_->buffer_.data(), packet->GetSize());
+      auto packet_size = packet->GetSize();
+      if (factory_->buffer_.size() < packet_size) {
+        factory_->buffer_.resize(packet_size);
+      }
+      packet->CopyData(factory_->buffer_.data(), packet_size);
       auto from_address_raw = toSockaddr(from_address);
       // will call `LsquicEngine::on_hsk_done`, `LsquicEngine::ea_get_ssl_ctx`.
       lsquic_engine_packet_in(engine_,
                               factory_->buffer_.data(),
-                              packet->GetSize(),
+                              packet_size,
                               &address_raw_,
                               &from_address_raw,
                               this,
