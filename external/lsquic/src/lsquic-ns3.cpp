@@ -319,7 +319,7 @@ namespace ns3 {
       if (ls_stream_ == nullptr) {
         return 0;
       }
-      return kWindowSize;
+      return lsquic_stream_write_avail(ls_stream_);
     }
     int Send(Ptr<Packet> packet, uint32_t flags) override {
       NS_ASSERT(server_.has_value() and not server_.value());

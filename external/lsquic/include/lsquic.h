@@ -2238,6 +2238,9 @@ int
 lsquic_ssl_sess_to_resume_info (struct ssl_st *, struct ssl_session_st *,
                                         unsigned char **buf, size_t *buf_sz);
 
+size_t
+lsquic_stream_write_avail (lsquic_stream_t *stream);
+
 #ifdef __cplusplus
 }
 #endif
