@@ -245,8 +245,15 @@ void test(bool tcp) {
   test({10, 4 * 1000000}, tcp);
 }
 
-int main() {
-  for (auto &tcp : {true, false}) {
+int main(int argc, char **argv) {
+  if (argc == 1) {
+    for (auto &tcp : {true, false}) {
+      test(tcp);
+    }
+  } else {
+    std::string_view arg{argv[1]};
+    auto tcp = arg == "tcp", quic = arg == "quic";
+    NS_ASSERT(tcp or quic);
     test(tcp);
   }
 }
