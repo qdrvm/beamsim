@@ -398,7 +398,7 @@ int lsquic_aes_aead_dec(EVP_AEAD_CTX *key,
 /* 32 bytes client nonce with 4 bytes tm, 8 bytes orbit */
 void lsquic_gen_nonce_c(unsigned char *buf, uint64_t orbit)
 {
-    time_t tm = time(NULL);
+    time_t tm = 0;
     unsigned char *p = buf;
     memcpy(p, &tm, 4);
     p += 4;
