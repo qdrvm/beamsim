@@ -1,11 +1,11 @@
 /* Copyright (c) 2017 - 2022 LiteSpeed Technologies Inc.  See LICENSE. */
 #include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <zlib.h>
 
-#include <openssl/ssl.h>
 #ifndef WIN32
 #else
 #include <stdlib.h>
