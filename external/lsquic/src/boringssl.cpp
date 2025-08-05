@@ -14,3 +14,5 @@ extern "C" int RAND_bytes(uint8_t *buf, size_t len) {
   }
   return 1;
 }
+
+extern "C" void CRYPTO_library_init() {}
