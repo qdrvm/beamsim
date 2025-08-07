@@ -199,6 +199,8 @@ gettimeofday (struct timeval *tv, struct timezone *tz)
 #endif
 
 
+int lsquic_time_now();
+
 static size_t
 print_timestamp (char *buf, size_t max)
 {
@@ -206,7 +208,9 @@ print_timestamp (char *buf, size_t max)
     struct timeval tv;
     size_t len = 0;
 
-    gettimeofday(&tv, NULL);
+    int us = lsquic_time_now();
+    tv.tv_sec = us / 1000000;
+    tv.tv_usec = us % 1000000;
 #ifdef WIN32
     {
         time_t t = tv.tv_sec;
