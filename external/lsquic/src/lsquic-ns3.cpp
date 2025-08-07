@@ -34,70 +34,7 @@ namespace ns3 {
   constexpr std::chrono::seconds kIdleTimeout{5};
 
   struct LsquicCertificate {
-    static constexpr std::array<uint8_t, 4> kAlpn{3, 'n', 's', '3'};
-
-    static void setRelativeTime(ASN1_TIME *o_time, auto delta) {
-      NS_ASSERT(X509_gmtime_adj(
-          o_time,
-          std::chrono::duration_cast<std::chrono::seconds>(delta).count()));
-    }
-
-    LsquicCertificate() : ctx_{SSL_CTX_new(TLS_method())} {
-      static FILE *keylog = [] {
-        FILE *f = nullptr;
-        if (auto *path = getenv("SSLKEYLOGFILE")) {
-          f = fopen(path, "a");
-          setvbuf(f, nullptr, _IOLBF, 0);
-        }
-        return f;
-      }();
-      if (keylog) {
-        SSL_CTX_set_keylog_callback(
-            ctx_.get(), +[](const SSL *, const char *line) {
-              fputs(line, keylog);
-              fputc('\n', keylog);
-            });
-      }
-      NS_ASSERT(SSL_CTX_set_alpn_protos(ctx_.get(), kAlpn.data(), kAlpn.size())
-                == 0);
-      SSL_CTX_set_alpn_select_cb(ctx_.get(), alpn, this);
-      SSL_CTX_set_min_proto_version(ctx_.get(), TLS1_3_VERSION);
-      SSL_CTX_set_max_proto_version(ctx_.get(), TLS1_3_VERSION);
-      std::array<uint16_t, 1> prefs{SSL_SIGN_ED25519};
-      NS_ASSERT(SSL_CTX_set_signing_algorithm_prefs(
-          ctx_.get(), prefs.data(), prefs.size()));
-      NS_ASSERT(SSL_CTX_set_verify_algorithm_prefs(
-          ctx_.get(), prefs.data(), prefs.size()));
-      bssl::UniquePtr<X509> x509(X509_new());
-      setRelativeTime(X509_getm_notBefore(x509.get()), -std::chrono::days{1});
-      setRelativeTime(X509_getm_notAfter(x509.get()), std::chrono::years{1});
-      bssl::UniquePtr<EVP_PKEY_CTX> pkey_ctx(
-          EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, nullptr));
-      NS_ASSERT(EVP_PKEY_keygen_init(pkey_ctx.get()));
-      EVP_PKEY *_pkey = nullptr;
-      NS_ASSERT(EVP_PKEY_keygen(pkey_ctx.get(), &_pkey));
-      bssl::UniquePtr<EVP_PKEY> pkey{_pkey};
-      NS_ASSERT(SSL_CTX_use_PrivateKey(ctx_.get(), pkey.get()));
-      NS_ASSERT(X509_set_pubkey(x509.get(), pkey.get()));
-      NS_ASSERT(X509_sign(x509.get(), pkey.get(), nullptr));
-      NS_ASSERT(SSL_CTX_use_certificate(ctx_.get(), x509.get()));
-    }
-
-    static int alpn(ssl_st *ssl,
-                    const unsigned char **out,
-                    unsigned char *outlen,
-                    const unsigned char *in,
-                    unsigned int inlen,
-                    void *) {
-      uint8_t *out2 = nullptr;
-      int r = SSL_select_next_proto(
-          &out2, outlen, in, inlen, kAlpn.data(), kAlpn.size());
-      *out = out2;
-      return r == OPENSSL_NPN_NEGOTIATED ? SSL_TLSEXT_ERR_OK
-                                         : SSL_TLSEXT_ERR_ALERT_FATAL;
-    }
-
-    bssl::UniquePtr<ssl_ctx_st> ctx_;
+    ssl_ctx_st *ctx_{SSL_CTX_new(TLS_method())};
   };
 
   class LsquicSocket;
@@ -622,7 +559,7 @@ namespace ns3 {
 
   ssl_ctx_st *LsquicEngine::ea_get_ssl_ctx(void *void_self, const sockaddr *) {
     LsquicEngine *self = static_cast<LsquicEngine *>(void_self);
-    return self->factory_->certificate_.ctx_.get();
+    return self->factory_->certificate_.ctx_;
   }
 
   int LsquicEngine::ea_packets_out(void *void_self,

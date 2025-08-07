@@ -105,8 +105,6 @@ target_link_libraries(lsquic
   ns3::applications
   ns3::internet
   ns3::point-to-point
-  ssl
-  crypto
   xxhash
   zlibstatic
 )

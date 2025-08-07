@@ -42,15 +42,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(zlib)
 
-FetchContent_Declare(
-        boringssl
-        GIT_REPOSITORY https://github.com/google/boringssl.git
-        GIT_TAG main
-)
-FetchContent_MakeAvailable(boringssl)
-
-
-
 add_executable(beamsim main.cpp)
 target_include_directories(beamsim PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(beamsim yaml-cpp::yaml-cpp xxhash)
