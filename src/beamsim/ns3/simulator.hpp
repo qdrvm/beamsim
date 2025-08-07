@@ -6,7 +6,9 @@
 #include <ns3/network-module.h>
 
 #include <beamsim/i_simulator.hpp>
+#include <beamsim/ns3/protocol.hpp>
 #include <beamsim/ns3/routing.hpp>
+#include <lsquic-ns3.hpp>
 #include <unordered_map>
 
 namespace beamsim::ns3_ {
@@ -124,27 +126,42 @@ namespace beamsim::ns3_ {
       queue_.emplace_back(std::move(item));
     }
 
-    ns3::Ptr<ns3::Packet> readPacket(uint32_t available) {
+    ns3::Ptr<ns3::Packet> peekPacket(uint32_t available) const {
       auto packet = ns3::Create<ns3::Packet>();
-      while (available != 0 and not queue_.empty()) {
-        auto &item = queue_.front();
-        if (item.offset < item.data.size()) {
-          auto n =
-              std::min<uint32_t>(available, item.data.size() - item.offset);
+      for (auto &item : queue_) {
+        auto offset = item.offset;
+        if (offset < item.data.size()) {
+          auto n = std::min<uint32_t>(available, item.data.size() - offset);
           packet->AddAtEnd(
-              ns3::Create<ns3::Packet>(item.data.data() + item.offset, n));
-          item.offset += n;
+              ns3::Create<ns3::Packet>(item.data.data() + offset, n));
+          offset += n;
           available -= n;
-        } else if (item.offset < item.size) {
-          auto n = std::min<uint32_t>(available, item.size - item.offset);
+        }
+        if (available == 0) {
+          break;
+        }
+        if (offset < item.size) {
+          auto n = std::min<uint32_t>(available, item.size - offset);
           packet->AddPaddingAtEnd(n);
-          item.offset += n;
           available -= n;
-        } else {
-          queue_.pop_front();
+        }
+        if (available == 0) {
+          break;
         }
       }
       return packet;
+    }
+
+    void read(uint32_t want) {
+      while (want != 0 and not queue_.empty()) {
+        auto &item = queue_.front();
+        auto n = std::min(want, item.size - item.offset);
+        item.offset += n;
+        want -= n;
+        if (item.offset >= item.size) {
+          queue_.pop_front();
+        }
+      }
     }
 
     std::deque<Item> queue_;
@@ -178,11 +195,7 @@ namespace beamsim::ns3_ {
       peer_->onStart();
     }
 
-    SocketPtr makeSocket() {
-      auto socket = ns3::Socket::CreateSocket(
-          GetNode(), ns3::TypeId::LookupByName("ns3::TcpSocketFactory"));
-      return socket;
-    }
+    SocketPtr makeSocket();
     void listen() {
       tcp_listener_ = makeSocket();
       tcp_listener_->Bind(ns3::InetSocketAddress{
@@ -208,8 +221,14 @@ namespace beamsim::ns3_ {
         if (available == 0) {
           break;
         }
-        auto packet = state.writing.readPacket(available);
-        assert2(socket->Send(packet) == static_cast<int>(packet->GetSize()));
+        auto packet = state.writing.peekPacket(available);
+        auto r = socket->Send(packet);
+        if (r == -1) {
+          assert2(socket->GetErrno() == socket->ERROR_AGAIN);
+          break;
+        }
+        assert2(r > 0);
+        state.writing.read(r);
       }
     }
     void onConnect(SocketPtr socket) {
@@ -250,6 +269,10 @@ namespace beamsim::ns3_ {
       if (mpiSize() > 0) {
         ns3::MpiInterface::Enable(MPI_COMM_WORLD);
       }
+    }
+
+    void setProtocol(Protocol protocol) {
+      protocol_ = protocol;
     }
 
     // ISimulator
@@ -305,7 +328,11 @@ namespace beamsim::ns3_ {
       if (isLocalPeer(index)) {
         auto peer = std::make_unique<Peer>(*this, index, std::forward<A>(a)...);
         application = ns3::Create<Application>(*this, std::move(peer));
-        routing_.peers_.Get(index)->AddApplication(std::move(application));
+        auto node = routing_.peers_.Get(index);
+        node->AddApplication(std::move(application));
+        if (protocol_ == Protocol::QUIC) {
+          ns3::InstallLsquic(node);
+        }
       }
     }
     template <typename Peer, typename... A>
@@ -367,12 +394,21 @@ namespace beamsim::ns3_ {
     }
 
     IMetrics *metrics_;
+    Protocol protocol_ = Protocol::TCP;
     bool cache_messages_ = true;
     std::vector<ns3::Ptr<Application>> applications_;
     Routing routing_;
     MessageId next_message_id_ = 0;
     std::unordered_map<MessageId, MessagePtr> messages_;
   };
+
+  SocketPtr Application::makeSocket() {
+    return ns3::Socket::CreateSocket(
+        GetNode(),
+        ns3::TypeId::LookupByName(simulator_.protocol_ == Protocol::TCP
+                                      ? "ns3::TcpSocketFactory"
+                                      : "ns3::LsquicSocketFactory"));
+  }
 
   void Application::onAccept(SocketPtr socket, const ns3::Address &address) {
     auto index = simulator_.routing_.ip_peer_index_.at(
