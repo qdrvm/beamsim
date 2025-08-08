@@ -52,6 +52,12 @@ def get_snark1_received(items):
     return rows2
 
 
+def get_signature_duplicates(items):
+    _, _, duplicates, signatures = filter_report(items, "signature-duplicates")[0]
+    avg_duplicates = duplicates / signatures
+    return duplicates, avg_duplicates
+
+
 class Metrics:
     def __init__(self, items):
         rows = filter_report(items, "metrics")
@@ -87,7 +93,7 @@ role_name = [
 ]
 
 exe = "build/beamsim"
-if not os.path.exists(exe): # for docker build
+if not os.path.exists(exe):  # for docker build
     exe = "/usr/local/bin/beamsim"
     if not os.path.exists(exe):
         raise FileNotFoundError(
