@@ -732,10 +732,12 @@ namespace beamsim::example {
                                          ? group_.local_aggregators
                                          : group_.validators},
                            shared_state_.publish_signature_more);
-        peers.erase(std::remove_if(
-            peers.begin(), peers.end(), [this](PeerIndex peer_index) {
-              return peer_index == peer_index_;
-            }));
+        peers.erase(std::remove_if(peers.begin(),
+                                   peers.end(),
+                                   [this](PeerIndex peer_index) {
+                                     return peer_index == peer_index_;
+                                   }),
+                    peers.end());
         gossip_.gossip(topic_index, std::move(message), peers);
       } else {
         gossip_.gossip(topic_index, std::move(message));
