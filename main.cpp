@@ -165,6 +165,7 @@ namespace beamsim::example {
     bool signature_half_direct;
     bool snark1_half_direct;
     bool signature_direct;
+    PeerIndex publish_signature_more;
     bool stop_on_create_snark1;
     PeerIndex snark2_received = 0;
     bool done = false;
@@ -683,7 +684,8 @@ namespace beamsim::example {
                SharedState &shared_state,
                Random &random)
         : PeerBase{simulator, index, shared_state},
-          gossip_{*this, random, shared_state_.gossip_config} {}
+          gossip_{*this, random, shared_state_.gossip_config},
+          random_{random} {}
 
     // IPeer
     void onStart() override {
@@ -721,9 +723,19 @@ namespace beamsim::example {
       if (signatureHalfDirect(message) or signatureDirect(message)) {
         return;
       }
-      gossip_.gossip(topicSignature(shared_state_.roles.group_of_validator.at(
-                         peer_index_)),
-                     std::move(message));
+      auto topic_index = topicSignature(
+          shared_state_.roles.group_of_validator.at(peer_index_));
+      if (shared_state_.publish_signature_more
+          > shared_state_.gossip_config.mesh_n) {
+        auto peers =
+            random_.sample(std::span{shared_state_.signature_half_direct
+                                         ? group_.local_aggregators
+                                         : group_.validators},
+                           shared_state_.publish_signature_more);
+        gossip_.gossip(topic_index, std::move(message), peers);
+      } else {
+        gossip_.gossip(topic_index, std::move(message));
+      }
     }
     void sendSnark1(MessagePtr message) override {
       if (snark1HalfDirect(message)) {
@@ -736,6 +748,7 @@ namespace beamsim::example {
     }
 
     gossip::Peer gossip_;
+    Random &random_;
   };
 
   class PeerGrid : public PeerBase {
@@ -851,6 +864,7 @@ void run_simulation(const SimulationConfig &config) {
         .signature_half_direct = config.signature_half_direct,
         .snark1_half_direct = config.snark1_half_direct,
         .signature_direct = config.signature_direct,
+        .publish_signature_more = config.publish_signature_more,
         .stop_on_create_snark1 = config.local_aggregation_only,
     };
 

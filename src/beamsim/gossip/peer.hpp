@@ -85,7 +85,9 @@ namespace beamsim::gossip {
         dontwant_.emplace(from_peer, message_hash);
         dontwant_.emplace(publish.origin, message_hash);
         on_gossip(publish.message, [this, publish, message_hash] {
-          _gossip(publish, message_hash);
+          _gossip(publish,
+                  message_hash,
+                  views_.at(publish.topic_index).publishTo());
         });
       }
       for (auto &message_hash : gossip_message.iwant) {
@@ -113,18 +115,27 @@ namespace beamsim::gossip {
     }
 
     void gossip(TopicIndex topic_index, MessagePtr any_message) {
+      gossip(topic_index, any_message, views_.at(topic_index).publishTo());
+    }
+
+    void gossip(TopicIndex topic_index,
+                MessagePtr any_message,
+                const auto &peers) {
       auto message_hash = any_message->hash();
       if (not duplicate_cache_.emplace(message_hash).second) {
         return;
       }
-      _gossip({topic_index, peer_.peer_index_, any_message}, message_hash);
+      _gossip(
+          {topic_index, peer_.peer_index_, any_message}, message_hash, peers);
     }
 
    private:
-    void _gossip(const Publish &publish, MessageHash message_hash) {
+    void _gossip(const Publish &publish,
+                 MessageHash message_hash,
+                 const auto &peers) {
       mcache_.emplace(message_hash, publish);
       history_[publish.topic_index].add(message_hash);
-      for (auto &to_peer : views_.at(publish.topic_index).publishTo()) {
+      for (auto &to_peer : peers) {
         if (dontwant_.contains({to_peer, message_hash})) {
           continue;
         }

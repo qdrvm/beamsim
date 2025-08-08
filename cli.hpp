@@ -581,6 +581,12 @@ struct SimulationConfig {
       signature_direct,
       "don't send snark1 to local aggregators",
   }};
+  beamsim::PeerIndex publish_signature_more = 0;
+  Args::FlagInt<beamsim::PeerIndex> flag_publish_signature_more{{
+      {"--publish-signature-more"},
+      publish_signature_more,
+      "publish signature to max(mesh_n, N) peers",
+  }};
   bool local_aggregation_only = false;
   Args::FlagBool flag_local_aggregation_only{{
       {"--local-aggregation-only"},
@@ -632,6 +638,7 @@ struct SimulationConfig {
              flag_signature_half_direct,
              flag_snark1_half_direct,
              flag_signature_direct,
+             flag_publish_signature_more,
              flag_local_aggregation_only,
              flag_gml_path,
              flag_max_bitrate,
@@ -709,6 +716,7 @@ struct SimulationConfig {
     yaml.at({"gossip", "mesh_n"}).get(gossip_config.mesh_n);
     yaml.at({"gossip", "non_mesh_n"}).get(gossip_config.non_mesh_n);
     yaml.at({"gossip", "idontwant"}).get(gossip_config.idontwant);
+    yaml.at({"gossip", "publish_signature_more"}).get(publish_signature_more);
 
     auto &consts = beamsim::consts();
     yaml.at({"consts", "signature_time"}).get(consts.signature_time);
