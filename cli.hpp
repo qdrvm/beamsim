@@ -557,6 +557,12 @@ struct SimulationConfig {
       snark1_pull,
       "broadcast bitfield instead of snark1",
   }};
+  bool snark1_pull_early = false;
+  Args::FlagBool flag_snark1_pull_early{{
+      {"--snark1-pull-early"},
+      snark1_pull_early,
+      "broadcast bitfield while generating snark1",
+  }};
   bool signature_half_direct = false;
   Args::FlagBool flag_signature_half_direct{{
       {"--signature-half-direct"},
@@ -622,6 +628,7 @@ struct SimulationConfig {
              flag_shuffle,
              flag_snark1_group_once,
              flag_snark1_pull,
+             flag_snark1_pull_early,
              flag_signature_half_direct,
              flag_snark1_half_direct,
              flag_signature_direct,
@@ -685,6 +692,7 @@ struct SimulationConfig {
     yaml.at({"shuffle"}).get(shuffle);
     yaml.at({"snark1_group_once"}).get(snark1_group_once);
     yaml.at({"snark1_pull"}).get(snark1_pull);
+    yaml.at({"snark1_pull_early"}).get(snark1_pull_early);
     yaml.at({"signature_half_direct"}).get(signature_half_direct);
     yaml.at({"snark1_half_direct"}).get(snark1_half_direct);
     yaml.at({"signature_direct"}).get(signature_direct);
@@ -749,6 +757,10 @@ struct SimulationConfig {
       // TODO: repeat snark1 aggregation with more signatures
       std::println(
           "Warning: snark1 threshold shouldn't be less than snark2 threshold");
+    }
+    if (snark1_pull_early and not snark1_pull) {
+      snark1_pull = true;
+      std::println("Warning: snark1_pull_early implies snark1_pull");
     }
   }
 
