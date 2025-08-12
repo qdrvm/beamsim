@@ -515,14 +515,14 @@ struct SimulationConfig {
       config_path,
       "yaml config path",
   }};
-  Backend backend = Backend::DELAY;
+  Backend backend = Backend::NS3_DIRECT;
   Args::FlagEnum<decltype(backend)> flag_backend{
       {"-b", "--backend"},
       backend,
       "Simulation backend",
       enum_backend_,
   };
-  Topology topology = Topology::DIRECT;
+  Topology topology = Topology::GOSSIP;
   Args::FlagEnum<decltype(topology)> flag_topology{
       {"-t", "--topology"},
       topology,
@@ -545,13 +545,13 @@ struct SimulationConfig {
       shuffle,
       "shuffle validators from same group to different routers",
   }};
-  bool snark1_group_once = false;
+  bool snark1_group_once = true;
   Args::FlagBool flag_snark1_group_once{{
       {"--snark1-group-once"},
       snark1_group_once,
       "global aggregator accepts only accepts first snark1 from group",
   }};
-  bool snark1_pull = false;
+  bool snark1_pull = true;
   Args::FlagBool flag_snark1_pull{{
       {"--snark1-pull"},
       snark1_pull,

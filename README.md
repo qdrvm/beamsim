@@ -136,6 +136,209 @@ The NS-3 setup script will:
 ./build/main --backend queue --topology direct --groups 5 --group-validators 20
 ```
 
+## Parameter Reference (CLI and YAML)
+
+BeamSim can be configured via command-line flags and/or a YAML file. When both are provided, CLI flags override YAML.
+
+- Load YAML: `-c, --config <path>`
+- Override any value via the CLI flags below.
+
+### Enumerations and units
+
+- Backend: 
+   - `ns3-direct`: recommended, the most realistic simulating TCP stack
+   - `queue`: faster backend, without TCP simulation
+   - `ns3`: realistic, obsolete
+   - `delay`: obsolete, not recommended
+- Topology: `direct`, `gossip`, `grid`
+- Time (YAML): suffix `ms` or `us` (e.g., `20ms`, `30us`)
+- Bitrate: plain number (bits/sec) or `Mbps` (e.g., `100Mbps`)
+- Abs-or-ratio inputs: absolute number or percentage with `%` (e.g., `3` or `10%`)
+
+### Core simulation
+
+- backend
+   - YAML: `backend: delay|queue|ns3|ns3-direct`
+   - CLI: `-b, --backend <value>`
+   - Selects the simulation backend. Default: `ns3-direct`.
+- topology
+   - YAML: `topology: direct|gossip|grid`
+   - CLI: `-t, --topology <value>`
+   - Communication topology across nodes. Default: `direct`.
+- random_seed
+   - YAML: `random_seed: <uint>`
+   - Seed for reproducibility (YAML only). Default: `0`.
+
+### Roles (network size and aggregators)
+
+- roles.group_count
+   - YAML: `roles.group_count: <uint>`
+   - CLI: `-g, --groups <number>`
+   - Number of validator groups. Default: `4`.
+- roles.group_validator_count
+   - YAML: `roles.group_validator_count: <uint>`
+   - CLI: `-gv, --group-validators <number>`
+   - Validators per group (includes local aggregators). Default: `4`.
+- roles.group_local_aggregator_count
+   - YAML: `roles.group_local_aggregator_count: <number|percent%>`
+   - CLI: `-la, --local-aggregators <number|percent%>`
+   - Local aggregators per group (absolute or percentage of validators per group). Default: `1`.
+- roles.global_aggregator_count
+   - YAML: `roles.global_aggregator_count: <uint>`
+   - CLI: `-ga, --global-aggregators <number>`
+   - Total number of global aggregators. Default: `1`.
+
+Note: Values are validated to ensure local aggregators per group do not exceed the feasible maximum given global aggregators.
+
+### Behavior toggles
+
+- shuffle
+   - YAML: `shuffle: true|false`
+   - CLI: `--shuffle`
+   - Shuffle validators from the same group across different routers (for `ns3` backend). Default: `false`.
+- snark1_group_once
+   - YAML: `snark1_group_once: true|false`
+   - CLI: `--snark1-group-once`
+   - Global aggregator accepts only the first SNARK1 per group. Default: `true`.
+- snark1_pull
+   - YAML: `snark1_pull: true|false`
+   - CLI: `--snark1-pull`
+   - Broadcast bitfield instead of SNARK1 (pull-based dissemination). Default: `true`.
+- signature_half_direct
+   - YAML: `signature_half_direct: true|false`
+   - CLI: `--signature-half-direct`
+   - Send signatures only to aggregators. Default: `false`.
+- snark1_half_direct
+   - YAML: `snark1_half_direct: true|false`
+   - CLI: `--snark1-half-direct`
+   - Do not send SNARK1 to local aggregators (direct-topology optimization). Default: `false`.
+- signature_direct
+   - YAML: `signature_direct: true|false`
+   - CLI: `--signature-direct`
+   - Send signatures directly to aggregators only (skip validator fanout in direct). Default: `false`.
+- local_aggregation_only
+   - YAML: (CLI only)
+   - CLI: `--local-aggregation-only`
+   - Stop after local aggregation produces SNARK1. Default: `false`.
+- report
+   - YAML: (CLI only)
+   - CLI: `--report`
+   - Print machine-readable report lines for plotting. Default: `false`.
+
+### Gossip settings (topology=gossip)
+
+ - gossip.mesh_n — YAML: `gossip.mesh_n: <uint>` — Target peers in mesh per topic. Default: `4`.
+ - gossip.non_mesh_n — YAML: `gossip.non_mesh_n: <uint>` — Maintain extra non-mesh peers. Default: `4`.
+ - gossip.idontwant — YAML: `gossip.idontwant: true|false` — Enable IDONTWANT control messages. Default: `true`.
+
+### Network
+
+- network.gml
+   - YAML: `network.gml: <path>`
+   - CLI: `--gml <path>`
+   - Use latencies/topology from a shadow atlas binary. Default: empty (disabled).
+- network.max_bitrate
+   - YAML: `network.max_bitrate: <number|Mbps>`
+   - CLI: `--max-bitrate <number|Mbps>`
+   - Maximum incoming bandwidth per node (default `100Mbps`).
+- network.gml_bitrate
+   - YAML: `network.gml_bitrate: <uint>`
+   - CLI: (YAML only)
+   - Override bitrate for links derived from the GML/shadow atlas. Default: `0` (use `max_bitrate`).
+
+### Cryptographic and compute constants (consts)
+
+All under `consts:` in YAML.
+
+- signature_time: `<time>` — time for a validator to create an initial signature.
+- signature_size: `<uint>` — bytes per signature.
+- snark_size: `<uint>` — bytes per SNARK proof.
+- snark1_threshold: `<double>` — fraction of signatures needed to build SNARK1.
+- snark2_threshold: `<double>` — fraction of signatures needed to build final SNARK2.
+- aggregation_rate_per_sec: `<double>` — signature aggregation speed (sigs/sec).
+- snark_recursion_aggregation_rate_per_sec: `<double>` — SNARK recursion speed (proofs/sec).
+- pq_signature_verification_time: `<time>` — time to verify one PQ signature.
+- snark_proof_verification_time: `<time>` — time to verify one SNARK proof.
+
+Defaults (when not set in YAML):
+- signature_time: `20ms`
+- signature_size: `3072`
+- snark_size: `131072`
+- snark1_threshold: `0.9`
+- snark2_threshold: `0.66`
+- aggregation_rate_per_sec: `1000`
+- snark_recursion_aggregation_rate_per_sec: `100`
+- pq_signature_verification_time: `3ms`
+- snark_proof_verification_time: `10ms`
+
+### CLI-only quick reference
+
+- `-c, --config <path>` — load YAML config
+- `-b, --backend <delay|queue|ns3|ns3-direct>`
+- `-t, --topology <direct|gossip|grid>`
+- `-g, --groups <number>`
+- `-gv, --group-validators <number>`
+- `-la, --local-aggregators <number|percent%>`
+- `-ga, --global-aggregators <number>`
+- `--max-bitrate <number|Mbps>`
+- `--gml <path>`
+- `--shuffle`
+- `--snark1-group-once`
+- `--snark1-pull`
+- `--signature-half-direct`
+- `--snark1-half-direct`
+- `--signature-direct`
+- `--local-aggregation-only`
+- `--report`
+- `-h, --help`
+
+### Examples
+
+- YAML (see also `sample.yaml`):
+
+```yaml
+backend: ns3-direct
+topology: gossip
+random_seed: 42
+
+roles:
+   group_count: 8
+   group_validator_count: 512
+   group_local_aggregator_count: 10%
+   global_aggregator_count: 102
+
+gossip:
+   mesh_n: 8
+   non_mesh_n: 4
+   idontwant: true
+
+consts:
+   signature_time: 20ms
+   signature_size: 2530
+   snark_size: 131072
+   snark1_threshold: 0.75
+   snark2_threshold: 0.66
+   aggregation_rate_per_sec: 1000
+   snark_recursion_aggregation_rate_per_sec: 50
+   pq_signature_verification_time: 30us
+   snark_proof_verification_time: 5ms
+
+network:
+   gml: "shadow-atlas.bin"
+   max_bitrate: 100Mbps
+```
+
+- CLI overrides:
+
+```bash
+# Use 10% local aggregators, 4 global aggregators, and a tighter bandwidth cap
+./build/main -c sample.yaml -la 10% -ga 4 --max-bitrate 50Mbps
+
+# Enable pull-based SNARK1 dissemination and skip validator fanout in direct
+./build/main --backend ns3-direct --topology direct -g 4 -gv 64 \
+   --snark1-pull --signature-direct
+```
+
 ## Jupyter Notebook Analysis
 
 BeamSim includes a comprehensive Jupyter notebook (`beamsim.ipynb`) for advanced simulation analysis and visualization. The notebook provides interactive plotting capabilities to analyze network performance across different topologies.
