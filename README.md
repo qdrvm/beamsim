@@ -441,10 +441,16 @@ You can modify the simulation parameters in the notebook to:
 - **Scalability**: Limited by aggregator bottlenecks
 
 ### Gossip Topology
-- **Method**: Epidemic/gossip protocol
+- **Method**: Epidemic/gossipsub protocol
 - **Structure**: Overlay network with topic-based subscription
 - **Use Case**: Scalable consensus protocols
 - **Scalability**: Better for large networks
+
+### Grid Topology
+- **Method**: 2D mesh network
+- **Structure**: Nodes arranged in a grid, with local communication between neighbors
+- **Use Case**: Efficient data aggregation and dissemination
+- **Scalability**: Good for moderate-sized networks up to 10000 nodes
 
 ## Output
 
