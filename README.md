@@ -230,7 +230,7 @@ Note: Values are validated to ensure local aggregators per group do not exceed t
 
  - gossip.mesh_n — YAML: `gossip.mesh_n: <uint>` — Target peers in mesh per topic. Default: `4`.
  - gossip.non_mesh_n — YAML: `gossip.non_mesh_n: <uint>` — Maintain extra non-mesh peers. Default: `4`.
- - gossip.idontwant — YAML: `gossip.idontwant: true|false` — Enable IDONTWANT control messages. Default: `true`.
+ - gossip.idontwant — YAML: `gossip.idontwant: true|false` — Enable IDONTWANT control messages. Default: `false`.
 
 ### Network
 
@@ -311,7 +311,7 @@ roles:
 gossip:
    mesh_n: 8
    non_mesh_n: 4
-   idontwant: true
+   idontwant: false
 
 consts:
    signature_time: 20ms
