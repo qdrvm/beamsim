@@ -204,6 +204,11 @@ Note: Values are validated to ensure local aggregators per group do not exceed t
    - YAML: `snark1_pull: true|false`
    - CLI: `--snark1-pull`
    - Broadcast bitfield instead of SNARK1 (pull-based dissemination). Default: `true`.
+- snark1_pull_early
+   - YAML: `snark1_pull_early: true|false`
+   - CLI: `--snark1-pull-early`
+   - Start broadcasting the bitfield while SNARK1 is still being generated (early pull). Default: `false`.
+   - Note: Enabling `snark1_pull_early` implies `snark1_pull`.
 - signature_half_direct
    - YAML: `signature_half_direct: true|false`
    - CLI: `--signature-half-direct`
@@ -285,6 +290,7 @@ Defaults (when not set in YAML):
 - `--shuffle`
 - `--snark1-group-once`
 - `--snark1-pull`
+- `--snark1-pull-early`
 - `--signature-half-direct`
 - `--snark1-half-direct`
 - `--signature-direct`
