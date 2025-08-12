@@ -241,11 +241,11 @@ Note: Values are validated to ensure local aggregators per group do not exceed t
 - network.gml
    - YAML: `network.gml: <path>`
    - CLI: `--gml <path>`
-   - Use latencies/topology from a shadow atlas binary. Default: empty (disabled).
+   - Use latencies and bitrate **between pairs of nodes** from a shadow atlas binary. Default: empty (disabled).
 - network.max_bitrate
    - YAML: `network.max_bitrate: <number|Mbps>`
    - CLI: `--max-bitrate <number|Mbps>`
-   - Maximum incoming bandwidth per node (default `100Mbps`).
+   - Maximum incoming bandwidth **per node** (default `100Mbps`).
 - network.gml_bitrate
    - YAML: `network.gml_bitrate: <uint>`
    - CLI: (YAML only)
