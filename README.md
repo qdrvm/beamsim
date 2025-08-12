@@ -217,10 +217,6 @@ Note: Values are validated to ensure local aggregators per group do not exceed t
    - YAML: `snark1_half_direct: true|false`
    - CLI: `--snark1-half-direct`
    - Do not send SNARK1 to local aggregators (direct-topology optimization). Default: `false`.
-- signature_direct
-   - YAML: `signature_direct: true|false`
-   - CLI: `--signature-direct`
-   - Send signatures directly to aggregators only (skip validator fanout in direct). Default: `false`.
 - local_aggregation_only
    - YAML: (CLI only)
    - CLI: `--local-aggregation-only`
@@ -293,7 +289,6 @@ Defaults (when not set in YAML):
 - `--snark1-pull-early`
 - `--signature-half-direct`
 - `--snark1-half-direct`
-- `--signature-direct`
 - `--local-aggregation-only`
 - `--report`
 - `-h, --help`
@@ -340,9 +335,9 @@ network:
 # Use 10% local aggregators, 4 global aggregators, and a tighter bandwidth cap
 ./build/main -c sample.yaml -la 10% -ga 4 --max-bitrate 50Mbps
 
-# Enable pull-based SNARK1 dissemination and skip validator fanout in direct
+# Enable pull-based SNARK1 dissemination
 ./build/main --backend ns3-direct --topology direct -g 4 -gv 64 \
-   --snark1-pull --signature-direct
+   --snark1-pull
 ```
 
 ## Jupyter Notebook Analysis

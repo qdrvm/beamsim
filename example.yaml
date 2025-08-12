@@ -3,7 +3,6 @@ topology: direct
 shuffle: false
 snark1_pull: false
 snark1_half_direct: false
-signature_direct: false
 
 random_seed: 0
 

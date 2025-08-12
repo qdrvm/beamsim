@@ -164,7 +164,6 @@ namespace beamsim::example {
     bool snark1_pull_early;
     bool signature_half_direct;
     bool snark1_half_direct;
-    bool signature_direct;
     bool stop_on_create_snark1;
     PeerIndex snark2_received = 0;
     bool done = false;
@@ -264,11 +263,6 @@ namespace beamsim::example {
         if (shared_state_.signature_half_direct) {
           onMessageSignature(
               *signature, [this, any_message] { sendSignature(any_message); });
-          return true;
-        }
-        if (shared_state_.signature_direct) {
-          onMessageSignature(*signature,
-                             forwardSignatureDirect(from_peer, any_message));
           return true;
         }
       }
@@ -501,14 +495,6 @@ namespace beamsim::example {
       send(shared_state_.directSnark1(peer_index_), message);
       return true;
     }
-    bool signatureDirect(const MessagePtr &message) {
-      if (not shared_state_.signature_direct) {
-        return false;
-      }
-      shared_state_.directSignature(
-          peer_index_, [&](PeerIndex to_peer) { send(to_peer, message); });
-      return true;
-    }
 
     Role role() const {
       return shared_state_.roles.roles.at(peer_index_);
@@ -718,7 +704,7 @@ namespace beamsim::example {
 
     // PeerBase
     void sendSignature(MessagePtr message) override {
-      if (signatureHalfDirect(message) or signatureDirect(message)) {
+  if (signatureHalfDirect(message)) {
         return;
       }
       gossip_.gossip(topicSignature(shared_state_.roles.group_of_validator.at(
@@ -775,7 +761,7 @@ namespace beamsim::example {
 
     // PeerBase
     void sendSignature(MessagePtr message) override {
-      if (signatureHalfDirect(message) or signatureDirect(message)) {
+  if (signatureHalfDirect(message)) {
         return;
       }
       publish(topicSignature(group_index_), std::move(message));
@@ -850,7 +836,6 @@ void run_simulation(const SimulationConfig &config) {
         .snark1_pull_early = config.snark1_pull_early,
         .signature_half_direct = config.signature_half_direct,
         .snark1_half_direct = config.snark1_half_direct,
-        .signature_direct = config.signature_direct,
         .stop_on_create_snark1 = config.local_aggregation_only,
     };
 
@@ -861,8 +846,7 @@ void run_simulation(const SimulationConfig &config) {
                              shared_state.snark2_threshold());
     metrics.begin(simulator);
 
-    if (config.topology == SimulationConfig::Topology::DIRECT
-        or config.signature_direct) {
+    if (config.topology == SimulationConfig::Topology::DIRECT) {
       for (size_t i = 0; i < roles.validator_count; ++i) {
         shared_state.directSignature(i, [&](beamsim::PeerIndex to_peer) {
           simulator.connect(i, to_peer);
