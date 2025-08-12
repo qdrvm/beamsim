@@ -515,14 +515,14 @@ struct SimulationConfig {
       config_path,
       "yaml config path",
   }};
-  Backend backend = Backend::DELAY;
+  Backend backend = Backend::NS3_DIRECT;
   Args::FlagEnum<decltype(backend)> flag_backend{
       {"-b", "--backend"},
       backend,
       "Simulation backend",
       enum_backend_,
   };
-  Topology topology = Topology::DIRECT;
+  Topology topology = Topology::GOSSIP;
   Args::FlagEnum<decltype(topology)> flag_topology{
       {"-t", "--topology"},
       topology,
@@ -545,13 +545,13 @@ struct SimulationConfig {
       shuffle,
       "shuffle validators from same group to different routers",
   }};
-  bool snark1_group_once = false;
+  bool snark1_group_once = true;
   Args::FlagBool flag_snark1_group_once{{
       {"--snark1-group-once"},
       snark1_group_once,
       "global aggregator accepts only accepts first snark1 from group",
   }};
-  bool snark1_pull = false;
+  bool snark1_pull = true;
   Args::FlagBool flag_snark1_pull{{
       {"--snark1-pull"},
       snark1_pull,
@@ -573,12 +573,6 @@ struct SimulationConfig {
   Args::FlagBool flag_snark1_half_direct{{
       {"--snark1-half-direct"},
       snark1_half_direct,
-      "don't send snark1 to local aggregators",
-  }};
-  bool signature_direct = false;
-  Args::FlagBool flag_signature_direct{{
-      {"--signature-direct"},
-      signature_direct,
       "don't send snark1 to local aggregators",
   }};
   bool local_aggregation_only = false;
@@ -631,7 +625,6 @@ struct SimulationConfig {
              flag_snark1_pull_early,
              flag_signature_half_direct,
              flag_snark1_half_direct,
-             flag_signature_direct,
              flag_local_aggregation_only,
              flag_gml_path,
              flag_max_bitrate,
@@ -695,7 +688,6 @@ struct SimulationConfig {
     yaml.at({"snark1_pull_early"}).get(snark1_pull_early);
     yaml.at({"signature_half_direct"}).get(signature_half_direct);
     yaml.at({"snark1_half_direct"}).get(snark1_half_direct);
-    yaml.at({"signature_direct"}).get(signature_direct);
 
     yaml.at({"random_seed"}).get(random_seed);
 
