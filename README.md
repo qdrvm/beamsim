@@ -152,7 +152,6 @@ BeamSim can be configured via command-line flags and/or a YAML file. When both a
 - Backend: 
    - `ns3-direct`: recommended, the most realistic simulating TCP stack
    - `queue`: faster backend, without TCP simulation
-   - `ns3`: realistic, obsolete
    - `ns3`: realistic (deprecated, still supported for backward compatibility; will be removed in a future release)
    - `delay`: obsolete (deprecated, still supported for backward compatibility; not recommended and will be removed in a future release)
 - Topology: `direct`, `gossip`, `grid`
@@ -169,7 +168,7 @@ BeamSim can be configured via command-line flags and/or a YAML file. When both a
 - topology
    - YAML: `topology: direct|gossip|grid`
    - CLI: `-t, --topology <value>`
-   - Communication topology across nodes. Default: `direct`.
+   - Communication topology across nodes. Default: `gossip`.
 - random_seed
    - YAML: `random_seed: <uint>`
    - Seed for reproducibility (YAML only). Default: `0`.
@@ -250,7 +249,7 @@ Note: Values are validated to ensure local aggregators per group do not exceed t
 - network.gml_bitrate
    - YAML: `network.gml_bitrate: <uint>`
    - CLI: (YAML only)
-   - Override bitrate for links derived from the GML/shadow atlas. Default: `0` (use `max_bitrate`).
+   - Override bitrate for links derived from the GML/shadow atlas. Default: `0` (use bitrate from GML file).
 
 ### Cryptographic and compute constants (consts)
 
