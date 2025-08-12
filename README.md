@@ -153,7 +153,8 @@ BeamSim can be configured via command-line flags and/or a YAML file. When both a
    - `ns3-direct`: recommended, the most realistic simulating TCP stack
    - `queue`: faster backend, without TCP simulation
    - `ns3`: realistic, obsolete
-   - `delay`: obsolete, not recommended
+   - `ns3`: realistic (deprecated, still supported for backward compatibility; will be removed in a future release)
+   - `delay`: obsolete (deprecated, still supported for backward compatibility; not recommended and will be removed in a future release)
 - Topology: `direct`, `gossip`, `grid`
 - Time (YAML): suffix `ms` or `us` (e.g., `20ms`, `30us`)
 - Bitrate: plain number (bits/sec) or `Mbps` (e.g., `100Mbps`)
