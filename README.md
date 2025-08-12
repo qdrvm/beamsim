@@ -42,6 +42,8 @@ make docker_test
 
 ```
 
+> It was noticed that the Docker build does not behave consistently when BEAMSIM is using MPI (e.g. in large scale simulations). Therefore it is recommended to run large scale simulations using local build.
+
 For detailed Docker build configuration and options, see [`docs/BUILD.md`](docs/BUILD.md) and [`docs/MAKEFILE.md`](docs/MAKEFILE.md).
 
 ### Local Build with NS-3 Support
@@ -68,10 +70,12 @@ The NS-3 setup script will:
 ### Command Line Interface
 
 ```bash
-./build/main [options]
+./build/beamsim [options]
 ```
 
-### Options
+### Essential Options
+
+Here is the quick reference with the most important options, please see `Parameter reference` section for more detailed parameters description.
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -87,53 +91,53 @@ The NS-3 setup script will:
 
 ```bash
 # Run with default settings (4 groups, 3 validators each, delay backend, direct topology)
-./build/main
+./build/beamsim
 
 # Show help
-./build/main --help
+./build/beamsim --help
 ```
 
 #### Backend Selection
 
 ```bash
 # Use delay-based network simulation (fastest)
-./build/main --backend delay
+./build/beamsim --backend delay
 
 # Use queue-based network simulation
-./build/main --backend queue
+./build/beamsim --backend queue
 
 # Use NS-3 network simulation (most realistic, requires NS-3)
-./build/main --backend ns3
+./build/beamsim --backend ns3-direct
 ```
 
 #### Topology Configuration
 
 ```bash
 # Direct peer-to-peer communication
-./build/main --topology direct
+./build/beamsim --topology direct
 
-# Gossip protocol communication
-./build/main --topology gossip
+# Gossipsub protocol communication
+./build/beamsim --topology gossip
 ```
 
 #### Network Size Configuration
 
 ```bash
 # Small network: 2 groups of 5 validators each (10 total)
-./build/main --groups 2 --group-validators 5
+./build/beamsim --groups 2 --group-validators 5
 
 # Large network: 20 groups of 50 validators each (1000 total)
-./build/main --groups 20 --group-validators 50
+./build/beamsim --groups 20 --group-validators 50
 ```
 
 #### Combined Configuration
 
 ```bash
 # Realistic simulation with gossip protocol
-./build/main --backend ns3 --topology gossip --groups 10 --group-validators 10
+./build/beamsim --backend ns3-direct --topology gossip --groups 10 --group-validators 10
 
 # Performance testing with queue backend
-./build/main --backend queue --topology direct --groups 5 --group-validators 20
+./build/beamsim --backend queue --topology direct --groups 5 --group-validators 20
 ```
 
 ## Parameter Reference (CLI and YAML)
@@ -333,10 +337,10 @@ network:
 
 ```bash
 # Use 10% local aggregators, 4 global aggregators, and a tighter bandwidth cap
-./build/main -c sample.yaml -la 10% -ga 4 --max-bitrate 50Mbps
+./build/beamsim -c sample.yaml -la 10% -ga 4 --max-bitrate 50Mbps
 
 # Enable pull-based SNARK1 dissemination
-./build/main --backend ns3-direct --topology direct -g 4 -gv 64 \
+./build/beamsim --backend ns3-direct --topology direct -g 4 -gv 64 \
    --snark1-pull
 ```
 
@@ -421,7 +425,7 @@ You can modify the simulation parameters in the notebook to:
 - **Performance**: Medium
 - **Features**: Message queuing, contention modeling
 
-### NS-3 Backend
+### NS3-direct Backend
 - **Type**: Full network stack simulation
 - **Use Case**: Realistic network behavior analysis
 - **Performance**: Slowest (most detailed)
@@ -448,7 +452,7 @@ The simulator provides detailed timing and status information:
 
 ```
 Configuration:
-  Backend: ns3
+  Backend: ns3-direct
   Topology: gossip
   Groups: 4
   Validators per group: 3
@@ -468,7 +472,7 @@ When using the NS-3 backend, the simulator supports distributed execution:
 
 ```bash
 # Run with MPI (example with 4 processes)
-mpirun -np 4 ./build/main --backend ns3 --topology gossip
+mpirun -np 4 ./build/beamsim --backend ns3-direct --topology gossip
 ```
 
 ## Development
@@ -504,7 +508,7 @@ beamsim/
 
 - Use `delay` backend for algorithm development
 - Use `queue` backend for performance analysis
-- Use `ns3` backend only when network realism is critical
+- Use `ns3-direct` backend only when network realism is critical
 - Start with small network sizes and scale up gradually
 
 ### Verifying Installation
@@ -513,15 +517,15 @@ After building, verify the installation works correctly:
 
 ```bash
 # Test basic functionality
-./build/main --help
+./build/beamsim --help
 
 # Run a quick simulation
-./build/main --groups 2 --group-validators 3
+./build/beamsim --groups 2 --group-validators 3
 
 # Test different backends (if available)
-./build/main --backend delay
-./build/main --backend queue
-./build/main --backend ns3  # Only if NS-3 is installed
+./build/beamsim --backend delay
+./build/beamsim --backend queue
+./build/beamsim --backend ns3-direct  # Only if NS-3 is installed
 ```
 
 Expected output should show configuration details and simulation results with "Status: SUCCESS".
