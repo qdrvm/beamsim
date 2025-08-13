@@ -563,11 +563,11 @@ struct SimulationConfig {
       snark1_pull_early,
       "broadcast bitfield while generating snark1",
   }};
-  bool signature_half_direct = false;
-  Args::FlagBool flag_signature_half_direct{{
+  beamsim::PeerIndex signature_half_direct = 0;
+  Args::FlagInt<beamsim::PeerIndex> flag_signature_half_direct{{
       {"--signature-half-direct"},
       signature_half_direct,
-      "don't send signature to validators",
+      "don't send signature to validators, send to N local aggregators",
   }};
   bool snark1_half_direct = false;
   Args::FlagBool flag_snark1_half_direct{{
