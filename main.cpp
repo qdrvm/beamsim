@@ -162,7 +162,7 @@ namespace beamsim::example {
     bool snark1_group_once;
     bool snark1_pull;
     bool snark1_pull_early;
-    bool signature_half_direct;
+    PeerIndex signature_half_direct;
     bool snark1_half_direct;
     bool stop_on_create_snark1;
     PeerIndex snark2_received = 0;
@@ -198,8 +198,14 @@ namespace beamsim::example {
           f(to_peer);
         }
       } else {
-        f(group.local_aggregators.at(group.index_of_validators.at(from_peer)
-                                     % group.local_aggregators.size()));
+        auto n =
+            std::min<PeerIndex>(std::max<PeerIndex>(signature_half_direct, 1),
+                                group.local_aggregators.size());
+        for (PeerIndex i = 0; i < n; ++i) {
+          f(group.local_aggregators.at(
+              (group.index_of_validators.at(from_peer) + i)
+              % group.local_aggregators.size()));
+        }
       }
     }
     void connectHalfDirect(ISimulator &simulator) const {
@@ -704,7 +710,7 @@ namespace beamsim::example {
 
     // PeerBase
     void sendSignature(MessagePtr message) override {
-  if (signatureHalfDirect(message)) {
+      if (signatureHalfDirect(message)) {
         return;
       }
       gossip_.gossip(topicSignature(shared_state_.roles.group_of_validator.at(
@@ -761,7 +767,7 @@ namespace beamsim::example {
 
     // PeerBase
     void sendSignature(MessagePtr message) override {
-  if (signatureHalfDirect(message)) {
+      if (signatureHalfDirect(message)) {
         return;
       }
       publish(topicSignature(group_index_), std::move(message));
