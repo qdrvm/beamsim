@@ -283,9 +283,8 @@ namespace beamsim::example {
           return true;
         }
 
-        // For global aggregators using snark1-pull, don't request snark1 from groups we already have
-        if (shared_state_.snark1_group_once and shared_state_.snark1_pull
-            and role() == Role::GlobalAggregator) {
+        // Propagate one snark1 per group
+        if (shared_state_.snark1_group_once) {
           // Determine which group this snark1 ihave is from
           auto source_group = getGroupFromPeerIndices(ihave->peer_indices);
 
@@ -296,6 +295,7 @@ namespace beamsim::example {
                    source_group);
             return true;
           }
+          snark1_received_groups_.set(source_group);
         }
 
         auto bits1 = pulling_max_.ones();
@@ -382,7 +382,7 @@ namespace beamsim::example {
                       simulator_.stop();
                       return;
                     }
-                    _onMessageSnark1(snark1);
+                    _onMessageSnark1(snark1, [] {});
                     if (shared_state_.snark1_pull) {
                       if (not shared_state_.snark1_pull_early) {
                         sendSnark1(std::make_shared<Message>(
@@ -396,14 +396,13 @@ namespace beamsim::example {
     }
     void onMessageSnark1(const MessageSnark1 &message,
                          MessageForwardFn forward) {
-      thread_.run(simulator_,
-                  consts().snark_proof_verification_time,
-                  [this, message, forward] {
-                    forward();
-                    _onMessageSnark1(message);
-                  });
+      thread_.run(
+          simulator_,
+          consts().snark_proof_verification_time,
+          [this, message, forward] { _onMessageSnark1(message, forward); });
     }
-    void _onMessageSnark1(const MessageSnark1 &message) {
+    void _onMessageSnark1(const MessageSnark1 &message,
+                          const MessageForwardFn &forward) {
       if (shared_state_.snark1_pull and shared_state_.snark1_pull_early) {
         auto want = will_want_.extract(message.peer_indices);
         if (want) {
@@ -413,10 +412,6 @@ namespace beamsim::example {
             send(peer_to, ihave);
           }
         }
-      }
-
-      if (not aggregating_snark2.has_value()) {
-        return;
       }
 
       if (shared_state_.snark1_group_once) {
@@ -433,6 +428,11 @@ namespace beamsim::example {
         snark1_received_groups_.set(source_group);
       }
 
+      if (not aggregating_snark2.has_value()) {
+        forward();
+        return;
+      }
+
       ++snark1_received;
       aggregating_snark2->peer_indices.set(message.peer_indices);
       report(simulator_,
@@ -440,6 +440,7 @@ namespace beamsim::example {
              aggregating_snark2->peer_indices.ones());
       auto received = aggregating_snark2->peer_indices.ones();
       if (received < shared_state_.snark2_threshold()) {
+        forward();
         return;
       }
       auto snark2 = std::move(aggregating_snark2.value());
