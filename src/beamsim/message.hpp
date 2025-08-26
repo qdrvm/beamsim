@@ -164,7 +164,7 @@ namespace beamsim {
       return out;
     }
 
-    MessageHash hash() const {
+    virtual MessageHash hash() const {
       MessageHasher hasher;
       MessageEncodeTo to{[&hasher](BytesIn part) { hasher.update(part); }};
       encode(to);

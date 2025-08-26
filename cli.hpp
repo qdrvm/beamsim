@@ -557,6 +557,12 @@ struct SimulationConfig {
       snark1_pull,
       "broadcast bitfield instead of snark1",
   }};
+  bool snark1_global_push = true;
+  Args::FlagBool flag_snark1_global_push{{
+      {"--snark1-global-push"},
+      snark1_global_push,
+      "global aggregators push instead of pull",
+  }};
   bool snark1_pull_early = false;
   Args::FlagBool flag_snark1_pull_early{{
       {"--snark1-pull-early"},
@@ -622,6 +628,7 @@ struct SimulationConfig {
              flag_shuffle,
              flag_snark1_group_once,
              flag_snark1_pull,
+             flag_snark1_global_push,
              flag_snark1_pull_early,
              flag_signature_half_direct,
              flag_snark1_half_direct,
@@ -685,6 +692,7 @@ struct SimulationConfig {
     yaml.at({"shuffle"}).get(shuffle);
     yaml.at({"snark1_group_once"}).get(snark1_group_once);
     yaml.at({"snark1_pull"}).get(snark1_pull);
+    yaml.at({"snark1_global_push"}).get(snark1_global_push);
     yaml.at({"snark1_pull_early"}).get(snark1_pull_early);
     yaml.at({"signature_half_direct"}).get(signature_half_direct);
     yaml.at({"snark1_half_direct"}).get(snark1_half_direct);

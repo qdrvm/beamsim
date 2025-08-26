@@ -57,7 +57,7 @@ namespace beamsim {
     virtual void onStart() = 0;
     virtual void onMessage(PeerIndex from_peer, MessagePtr any_message) = 0;
 
-    void send(PeerIndex to_peer, MessagePtr any_message) {
+    virtual void send(PeerIndex to_peer, MessagePtr any_message) {
       simulator_.send(peer_index_, to_peer, std::move(any_message));
     }
 
