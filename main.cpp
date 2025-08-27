@@ -313,13 +313,14 @@ namespace beamsim::example {
           auto source_group = getGroupFromPeerIndices(ihave->peer_indices);
 
           // If the group has already contributed, ignore this ihave
-          if (snark1_received_groups_.get(source_group)) {
+          if (snark1_received_groups_.get(source_group)
+              or ihavesnark1_received_groups_.get(source_group)) {
             report(simulator_,
                    "snark1_ihave_ignored_duplicate_group",
                    source_group);
             return true;
           }
-          snark1_received_groups_.set(source_group);
+          ihavesnark1_received_groups_.set(source_group);
         }
 
         auto bits1 = pulling_max_.ones();
@@ -598,6 +599,7 @@ namespace beamsim::example {
     std::unordered_map<BitSet, std::vector<PeerIndex>> will_want_;
     BitSet pulling_max_;
     // Track which groups have already contributed snark1 (for global aggregators)
+    BitSet ihavesnark1_received_groups_;
     BitSet snark1_received_groups_;
     Thread thread_;
   };
