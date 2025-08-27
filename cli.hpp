@@ -726,13 +726,13 @@ struct SimulationConfig {
         .get(consts.snark_proof_verification_time);
 
     if (auto direct = yaml.at({"network", "direct"})) {
-      auto range = [&](std::string name, auto &range) {
-        direct.at({name, "min"}).required().get(range.first);
-        direct.at({name, "max"}).required().get(range.second);
-      };
       auto &config = direct_router.emplace();
-      range("bitrate", config.bitrate);
-      range("delay", config.delay);
+      Bitrate bitrate_min, bitrate_max;
+      direct.at({"bitrate", "min"}).required().get(bitrate_min);
+      direct.at({"bitrate", "max"}).required().get(bitrate_max);
+      config.bitrate = {bitrate_min.v, bitrate_max.v};
+      direct.at({"delay", "min"}).required().get(config.delay.first);
+      direct.at({"delay", "max"}).required().get(config.delay.second);
     }
     yaml.at({"network", "max_bitrate"}).get(max_bitrate);
     yaml.at({"network", "gml"}).get(gml_path);
