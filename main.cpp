@@ -165,6 +165,8 @@ namespace beamsim::example {
     PeerIndex signature_half_direct;
     bool snark1_half_direct;
     bool stop_on_create_snark1;
+    // New config: smart push at global aggregators
+    bool snark1_global_smart_push;
     PeerIndex snark2_received = 0;
     bool done = false;
     std::optional<std::pair<uint32_t, uint32_t>> signature_duplicates;
@@ -399,7 +401,21 @@ namespace beamsim::example {
       thread_.run(simulator_,
                   consts().snark_proof_verification_time,
                   [this, message, forward] {
-                    forward();
+                    // Smart push at global aggregators: forward and process only once per group
+                    if (shared_state_.snark1_global_smart_push
+                        && role() == Role::GlobalAggregator) {
+                      auto source_group = getGroupFromPeerIndices(message.peer_indices);
+                      if (snark1_pushed_groups_.get(source_group)) {
+                        report(simulator_,
+                               "snark1_smart_push_ignored_duplicate_group",
+                               source_group);
+                        return;  // ignore duplicate for this group
+                      }
+                      snark1_pushed_groups_.set(source_group);
+                    }
+                    if (forward) {
+                      forward();
+                    }
                     _onMessageSnark1(message);
                   });
     }
@@ -574,6 +590,8 @@ namespace beamsim::example {
     BitSet pulling_max_;
     // Track which groups have already contributed snark1 (for global aggregators)
     BitSet snark1_received_groups_;
+    // Track which groups we've already pushed snark1 for (smart push at globals)
+    BitSet snark1_pushed_groups_;
     Thread thread_;
   };
 
@@ -843,6 +861,7 @@ void run_simulation(const SimulationConfig &config) {
         .signature_half_direct = config.signature_half_direct,
         .snark1_half_direct = config.snark1_half_direct,
         .stop_on_create_snark1 = config.local_aggregation_only,
+        .snark1_global_smart_push = config.snark1_global_smart_push,
     };
 
     beamsim::example::report(simulator,

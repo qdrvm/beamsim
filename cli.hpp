@@ -581,6 +581,12 @@ struct SimulationConfig {
       local_aggregation_only,
       "stop simulation after local aggregator generates snark1",
   }};
+  bool snark1_global_smart_push = false;
+  Args::FlagBool flag_snark1_global_smart_push{{
+      {"--snark1-global-smart-push"},
+      snark1_global_smart_push,
+      "global aggregators push the first snark1 per group and ignore further ones",
+  }};
   std::optional<beamsim::DirectRouterConfig> direct_router;
   std::string gml_path;
   Args::FlagStr flag_gml_path{{
@@ -626,6 +632,7 @@ struct SimulationConfig {
              flag_signature_half_direct,
              flag_snark1_half_direct,
              flag_local_aggregation_only,
+             flag_snark1_global_smart_push,
              flag_gml_path,
              flag_max_bitrate,
              flag_report,
@@ -688,6 +695,7 @@ struct SimulationConfig {
     yaml.at({"snark1_pull_early"}).get(snark1_pull_early);
     yaml.at({"signature_half_direct"}).get(signature_half_direct);
     yaml.at({"snark1_half_direct"}).get(snark1_half_direct);
+    yaml.at({"snark1_global_smart_push"}).get(snark1_global_smart_push);
 
     yaml.at({"random_seed"}).get(random_seed);
 
