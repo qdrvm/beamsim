@@ -1,5 +1,6 @@
 backend: ns3
 topology: direct
+protocol: tcp  # Use tcp or udp
 
 roles:
   group_count: 4

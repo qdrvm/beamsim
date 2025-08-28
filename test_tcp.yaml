@@ -1,0 +1,8 @@
+backend: ns3-direct
+topology: gossip
+protocol: tcp
+roles:
+  group_count: 10
+  group_validator_count: 256
+  global_aggregator_count: 1
+  group_local_aggregator_count: 1

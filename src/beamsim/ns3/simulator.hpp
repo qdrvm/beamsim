@@ -6,6 +6,7 @@
 #include <ns3/network-module.h>
 
 #include <beamsim/i_simulator.hpp>
+#include <beamsim/ns3/protocol.hpp>
 #include <beamsim/ns3/routing.hpp>
 #include <unordered_map>
 
@@ -178,42 +179,27 @@ namespace beamsim::ns3_ {
       peer_->onStart();
     }
 
-    SocketPtr makeSocket() {
-      auto socket = ns3::Socket::CreateSocket(
+    ns3::InetSocketAddress peerAddress(PeerIndex peer_index) const;
+    PeerIndex peerIndex(const ns3::Address &address) const;
+    SocketPtr makeTcpSocket() {
+      return ns3::Socket::CreateSocket(
           GetNode(), ns3::TypeId::LookupByName("ns3::TcpSocketFactory"));
-      return socket;
     }
-    void listen() {
-      tcp_listener_ = makeSocket();
-      tcp_listener_->Bind(ns3::InetSocketAddress{
-          ns3::Ipv4Address::GetAny(),
-          kPort,
-      });
-      tcp_listener_->Listen();
-      tcp_listener_->SetAcceptCallback(
-          ns3::MakeNullCallback<bool, SocketPtr, const ns3::Address &>(),
-          ns3::MakeCallback(&Application::onAccept, this));
-    }
+    void listen();
     void onAccept(SocketPtr socket, const ns3::Address &address);
     void add(PeerIndex peer_index, SocketPtr socket) {
-      socket->SetRecvCallback(MakeCallback(&Application::pollRead, this));
-      socket->SetSendCallback(MakeCallback(&Application::pollWrite, this));
+      socket->SetRecvCallback(MakeCallback(&Application::pollReadTcp, this));
+      socket->SetSendCallback(MakeCallback(&Application::pollWriteTcp, this));
       tcp_socket_state_.emplace(socket, SocketState{peer_index});
     }
-    void pollRead(SocketPtr socket);
-    void pollWrite(SocketPtr socket, uint32_t = 0) {
-      auto &state = tcp_socket_state_.at(socket);
-      while (not state.writing.empty()) {
-        size_t available = socket->GetTxAvailable();
-        if (available == 0) {
-          break;
-        }
-        auto packet = state.writing.readPacket(available);
-        assert2(socket->Send(packet) == static_cast<int>(packet->GetSize()));
-      }
-    }
+    void pollReadTcp(SocketPtr socket);
+    void pollReadUdp(SocketPtr);
+    void onPacket(ns3::Ptr<ns3::Packet> packet, SocketState &state);
+    bool pollWrite(SocketPtr socket, SocketState &state);
+    void pollWriteTcp(SocketPtr socket, uint32_t = 0);
+    void pollWriteUdp(SocketPtr, uint32_t = 0);
     void onConnect(SocketPtr socket) {
-      pollWrite(socket);
+      pollWriteTcp(socket);
     }
     void onConnectError(SocketPtr) {
       abort();
@@ -221,26 +207,27 @@ namespace beamsim::ns3_ {
     void connect(PeerIndex peer_index);
     void send(PeerIndex peer_index,
               std::optional<MessageId> message_id,
-              const IMessage &message) {
-      assert2(peer_index != peer_->peer_index_);
-      auto &sockets = tcp_sockets_[peer_index];
-      auto connected = sockets.write() != nullptr;
-      if (not connected) {
-        connect(peer_index);
+              const IMessage &message);
+    SocketState &udpSocketState(PeerIndex peer_index) {
+      auto it = udp_socket_state_.find(peer_index);
+      if (it == udp_socket_state_.end()) {
+        it = udp_socket_state_.emplace(peer_index, SocketState{peer_index})
+                 .first;
       }
-      auto &socket = sockets.write();
-      auto &state = tcp_socket_state_.at(socket);
-      state.writing.write(message_id, message);
-      if (connected) {
-        pollWrite(socket);
-      }
+      return it->second;
     }
 
+   public:
     Simulator &simulator_;
     std::unique_ptr<IPeer> peer_;
+
+   private:
     SocketPtr tcp_listener_;
     std::unordered_map<PeerIndex, SocketInOut> tcp_sockets_;
     std::unordered_map<SocketPtr, SocketState> tcp_socket_state_;
+    SocketPtr udp_socket_;
+    std::unordered_map<PeerIndex, SocketState> udp_socket_state_;
+    std::unordered_set<PeerIndex> udp_writing_;
     Bytes reading_;
   };
 
@@ -250,6 +237,10 @@ namespace beamsim::ns3_ {
       if (mpiSize() > 0) {
         ns3::MpiInterface::Enable(MPI_COMM_WORLD);
       }
+    }
+
+    void setProtocol(Protocol protocol) {
+      protocol_ = protocol;
     }
 
     // ISimulator
@@ -367,6 +358,7 @@ namespace beamsim::ns3_ {
     }
 
     IMetrics *metrics_;
+    Protocol protocol_ = Protocol::TCP;
     bool cache_messages_ = true;
     std::vector<ns3::Ptr<Application>> applications_;
     Routing routing_;
@@ -375,9 +367,49 @@ namespace beamsim::ns3_ {
     MessageDecodeFn message_decode_;
   };
 
-  void Application::onAccept(SocketPtr socket, const ns3::Address &address) {
-    auto index = simulator_.routing_.ip_peer_index_.at(
+  // Application method implementations
+  ns3::InetSocketAddress Application::peerAddress(PeerIndex peer_index) const {
+    return ns3::InetSocketAddress{
+        simulator_.routing_.peer_ips_.at(peer_index),
+        kPort,
+    };
+  }
+
+  PeerIndex Application::peerIndex(const ns3::Address &address) const {
+    return simulator_.routing_.ip_peer_index_.at(
         ns3::InetSocketAddress::ConvertFrom(address).GetIpv4());
+  }
+
+  void Application::listen() {
+    ns3::InetSocketAddress bind{
+        ns3::Ipv4Address::GetAny(),
+        kPort,
+    };
+    switch (simulator_.protocol_) {
+      case Protocol::TCP: {
+        tcp_listener_ = makeTcpSocket();
+        assert2(tcp_listener_->Bind(bind) != -1);
+        assert2(tcp_listener_->Listen() != -1);
+        tcp_listener_->SetAcceptCallback(
+            ns3::MakeNullCallback<bool, SocketPtr, const ns3::Address &>(),
+            ns3::MakeCallback(&Application::onAccept, this));
+        break;
+      }
+      case Protocol::UDP: {
+        udp_socket_ = ns3::Socket::CreateSocket(
+            GetNode(), ns3::TypeId::LookupByName("ns3::UdpSocketFactory"));
+        assert2(udp_socket_->Bind(bind) != -1);
+        udp_socket_->SetRecvCallback(
+            ns3::MakeCallback(&Application::pollReadUdp, this));
+        udp_socket_->SetSendCallback(
+            ns3::MakeCallback(&Application::pollWriteUdp, this));
+        break;
+      }
+    }
+  }
+
+  void Application::onAccept(SocketPtr socket, const ns3::Address &address) {
+    auto index = peerIndex(address);
     auto &sockets = tcp_sockets_[index];
     assert2(not sockets.in);
     sockets.in = socket;
@@ -385,83 +417,167 @@ namespace beamsim::ns3_ {
     add(index, socket);
   }
 
-  void Application::pollRead(SocketPtr socket) {
+  void Application::pollReadTcp(SocketPtr socket) {
     auto &state = tcp_socket_state_.at(socket);
     while (auto packet = socket->Recv()) {
-      reading_.resize(packet->GetSize());
-      packet->CopyData(reading_.data(), reading_.size());
-      state.reading.buffer_.write(reading_);
-      while (true) {
-        auto &buffer = state.reading.buffer_;
-        if (state.reading.frame_.has_value()) {
-          auto &frame = state.reading.frame_.value();
-          auto want_data = frame.header.data_size.value() - frame.data.size();
-          if (want_data > 0) {
-            auto n = std::min<MessageSize>(want_data, buffer.size());
-            if (n == 0) {
-              break;
-            }
-            frame.data.resize(frame.data.size() + n);
-            buffer.peek(std::span{frame.data}.subspan(frame.data.size() - n));
-            buffer.read(n);
-            continue;
+      onPacket(packet, state);
+    }
+  }
+
+  void Application::pollReadUdp(SocketPtr) {
+    ns3::Address from;
+    while (auto packet = udp_socket_->RecvFrom(from)) {
+      onPacket(packet, udpSocketState(peerIndex(from)));
+    }
+  }
+
+  void Application::onPacket(ns3::Ptr<ns3::Packet> packet, SocketState &state) {
+    reading_.resize(packet->GetSize());
+    packet->CopyData(reading_.data(), reading_.size());
+    state.reading.buffer_.write(reading_);
+    while (true) {
+      auto &buffer = state.reading.buffer_;
+      if (state.reading.frame_.has_value()) {
+        auto &frame = state.reading.frame_.value();
+        auto want_data = frame.header.data_size.value() - frame.data.size();
+        if (want_data > 0) {
+          auto n = std::min<MessageSize>(want_data, buffer.size());
+          if (n == 0) {
+            break;
           }
-          if (frame.padding > 0) {
-            auto n = std::min<MessageSize>(frame.padding, buffer.size());
-            if (n == 0) {
-              break;
-            }
-            buffer.read(n);
-            frame.padding -= n;
-            continue;
-          }
-          auto item = std::exchange(state.reading.frame_, {}).value();
-          MessagePtr message;
-          if (simulator_.cache_messages_
-              and simulator_.isLocalPeer(state.peer_index)) {
-            auto node =
-                simulator_.messages_.extract(item.header.message_id.value());
-            assert2(node);
-            message = std::move(node.mapped());
-          } else {
-            MessageDecodeFrom data{item.data};
-            message = simulator_.message_decode_(data);
-          }
-          if (simulator_.metrics_ != nullptr) {
-            simulator_.metrics_->onPeerReceivedMessage(state.peer_index);
-          }
-          peer_->onMessage(state.peer_index, std::move(message));
+          frame.data.resize(frame.data.size() + n);
+          buffer.peek(std::span{frame.data}.subspan(frame.data.size() - n));
+          buffer.read(n);
           continue;
         }
-        Header header;
-        if (buffer.size() < header.size()) {
+        if (frame.padding > 0) {
+          auto n = std::min<MessageSize>(frame.padding, buffer.size());
+          if (n == 0) {
+            break;
+          }
+          buffer.read(n);
+          frame.padding -= n;
+          continue;
+        }
+        auto item = std::exchange(state.reading.frame_, {}).value();
+        MessagePtr message;
+        if (simulator_.cache_messages_
+            and simulator_.isLocalPeer(state.peer_index)) {
+          auto node =
+              simulator_.messages_.extract(item.header.message_id.value());
+          assert2(node);
+          message = std::move(node.mapped());
+        } else {
+          MessageDecodeFrom data{item.data};
+          message = simulator_.message_decode_(data);
+        }
+        if (simulator_.metrics_ != nullptr) {
+          simulator_.metrics_->onPeerReceivedMessage(state.peer_index);
+        }
+        peer_->onMessage(state.peer_index, std::move(message));
+        continue;
+      }
+      Header header;
+      if (buffer.size() < header.size()) {
+        break;
+      }
+      buffer.read(header.message_size.bytes);
+      buffer.read(header.message_id.bytes);
+      buffer.read(header.data_size.bytes);
+      state.reading.frame_.emplace(
+          header,
+          Bytes{},
+          header.message_size.value() - header.data_size.value());
+    }
+  }
+
+  bool Application::pollWrite(SocketPtr socket, SocketState &state) {
+    auto any = false;
+    while (not state.writing.empty()) {
+      size_t available = socket->GetTxAvailable();
+      if (available == 0) {
+        break;
+      }
+      auto packet = state.writing.readPacket(available);
+      int r = 0;
+      switch (simulator_.protocol_) {
+        case Protocol::TCP: {
+          r = socket->Send(packet) == static_cast<int>(packet->GetSize());
           break;
         }
-        buffer.read(header.message_size.bytes);
-        buffer.read(header.message_id.bytes);
-        buffer.read(header.data_size.bytes);
-        state.reading.frame_.emplace(
-            header,
-            Bytes{},
-            header.message_size.value() - header.data_size.value());
+        case Protocol::UDP: {
+          r = socket->SendTo(packet, 0, peerAddress(state.peer_index));
+          break;
+        }
+      }
+      assert2(r != -1);
+      any = true;
+    }
+    return any;
+  }
+
+  void Application::pollWriteTcp(SocketPtr socket, uint32_t) {
+    pollWrite(socket, tcp_socket_state_.at(socket));
+  }
+
+  void Application::pollWriteUdp(SocketPtr, uint32_t) {
+    auto available = true;
+    while (not udp_writing_.empty() and available) {
+      auto peer_index = *udp_writing_.begin();
+      auto &state = udp_socket_state_.at(peer_index);
+      available = pollWrite(udp_socket_, state);
+      if (state.writing.empty()) {
+        udp_writing_.erase(peer_index);
       }
     }
   }
 
   void Application::connect(PeerIndex peer_index) {
+    if (simulator_.protocol_ == Protocol::UDP) {
+      return;  // UDP is connectionless, no need to connect
+    }
+
     auto &sockets = tcp_sockets_[peer_index];
     assert2(not sockets.out);
     if (sockets.write()) {
       return;
     }
-    auto socket = makeSocket();
-    socket->Connect(ns3::InetSocketAddress{
-        simulator_.routing_.peer_ips_.at(peer_index), kPort});
+    auto socket = makeTcpSocket();
+    socket->Connect(peerAddress(peer_index));
     sockets.out = socket;
     sockets.write_out = true;
     socket->SetConnectCallback(
         MakeCallback(&Application::onConnect, this),
         MakeCallback(&Application::onConnectError, this));
     add(peer_index, socket);
+  }
+
+  void Application::send(PeerIndex peer_index,
+                         std::optional<MessageId> message_id,
+                         const IMessage &message) {
+    assert2(peer_index != peer_->peer_index_);
+    switch (simulator_.protocol_) {
+      case Protocol::TCP: {
+        auto &sockets = tcp_sockets_[peer_index];
+        auto connected = sockets.write() != nullptr;
+        if (not connected) {
+          connect(peer_index);
+        }
+        auto &socket = sockets.write();
+        auto &state = tcp_socket_state_.at(socket);
+        state.writing.write(message_id, message);
+        if (connected) {
+          pollWrite(socket, state);
+        }
+        break;
+      }
+      case Protocol::UDP: {
+        auto &state = udpSocketState(peer_index);
+        state.writing.write(message_id, message);
+        udp_writing_.emplace(peer_index);
+        pollWrite(udp_socket_, state);
+        break;
+      }
+    }
   }
 }  // namespace beamsim::ns3_

@@ -66,13 +66,13 @@ run_cache = dict()
 run_exe_time = None
 
 
-def run(b="ns3", t="direct", g=10, gv=10, shuffle=False, mpi=False):
+def run(b="ns3-direct", t="direct", p="tcp", g=10, gv=10, shuffle=False, mpi=False):
     global run_exe_time
     exe_time = os.stat(exe).st_mtime
     if run_exe_time != exe_time:
         run_exe_time = exe_time
         run_cache.clear()
-    key = (b, t, g, gv, shuffle, mpi)
+    key = (b, t, p, g, gv, shuffle, mpi)
     output = run_cache.get(key, None)
     if output is None:
         cmd = [
@@ -86,6 +86,8 @@ def run(b="ns3", t="direct", g=10, gv=10, shuffle=False, mpi=False):
             b,
             "-t",
             t,
+            "-p",
+            p,
             "-g",
             str(g),
             "-gv",
