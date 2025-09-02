@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_compile_options(
+# Store our strict compile options for later use
+set(STRICT_COMPILE_OPTIONS
   -Wall
   -Wextra
   -Woverloaded-virtual
@@ -34,16 +35,31 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(xxHash)
 
+FetchContent_Declare(
+        zlib
+        GIT_REPOSITORY https://github.com/madler/zlib.git
+        GIT_TAG v1.3.1
+)
+FetchContent_MakeAvailable(zlib)
+
 add_executable(beamsim main.cpp)
 target_include_directories(beamsim PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(beamsim yaml-cpp::yaml-cpp xxhash)
+target_compile_options(beamsim PRIVATE ${STRICT_COMPILE_OPTIONS})
 
 find_package(ns3 CONFIG)
 if(ns3_FOUND)
   find_package(MPI REQUIRED)
 
+  include(external/lsquic.cmake)
+
+  add_executable(lsquic-test lsquic-test.cpp)
+  target_link_libraries(lsquic-test lsquic)
+  target_compile_options(lsquic-test PRIVATE ${STRICT_COMPILE_OPTIONS})
+
   target_compile_definitions(beamsim PRIVATE ns3_FOUND)
   target_link_libraries(beamsim
+    lsquic
     ns3::applications
     ns3::core
     ns3::internet
@@ -55,3 +71,4 @@ endif()
 
 add_executable(gml2bin gml2bin.cpp)
 target_include_directories(gml2bin PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_options(gml2bin PRIVATE ${STRICT_COMPILE_OPTIONS})

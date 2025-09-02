@@ -6,6 +6,7 @@
 #include <beamsim/from_chars.hpp>
 #include <beamsim/gossip/config.hpp>
 #include <beamsim/ns3/mpi.hpp>
+#include <beamsim/ns3/protocol.hpp>
 
 struct Bitrate {
   uint64_t v;
@@ -506,6 +507,10 @@ struct SimulationConfig {
       {Topology::GOSSIP, "gossip"},
       {Topology::GRID, "grid"},
   }};
+  const Args::Enum<beamsim::ns3_::Protocol> enum_protocol_{{
+      {beamsim::ns3_::Protocol::TCP, "tcp"},
+      {beamsim::ns3_::Protocol::QUIC, "quic"},
+  }};
 
   beamsim::example::RolesConfig roles_config;
 
@@ -528,6 +533,13 @@ struct SimulationConfig {
       topology,
       "Communication topology",
       enum_topology_,
+  };
+  beamsim::ns3_::Protocol protocol = beamsim::ns3_::Protocol::TCP;
+  Args::FlagEnum<decltype(protocol)> flag_protocol{
+      {"-p", "--protocol"},
+      protocol,
+      "Network protocol (TCP/UDP)",
+      enum_protocol_,
   };
   Args::FlagInt<beamsim::example::GroupIndex> flag_group_count{{
       {"-g", "--groups"},
@@ -623,6 +635,7 @@ struct SimulationConfig {
     return f(flag_config_path,
              flag_backend,
              flag_topology,
+             flag_protocol,
              flag_group_count,
              flag_validators_per_group,
              flag_shuffle,
@@ -689,6 +702,7 @@ struct SimulationConfig {
     Yaml yaml{YAML::LoadFile(path)};
     yaml.at({"backend"}).get(backend, enum_backend_);
     yaml.at({"topology"}).get(topology, enum_topology_);
+    yaml.at({"protocol"}).get(protocol, enum_protocol_);
     yaml.at({"shuffle"}).get(shuffle);
     yaml.at({"snark1_group_once"}).get(snark1_group_once);
     yaml.at({"snark1_pull"}).get(snark1_pull);
@@ -771,6 +785,7 @@ struct SimulationConfig {
     std::println("Configuration:");
     std::println("  Backend: {}", enum_backend_.str(backend));
     std::println("  Topology: {}", enum_topology_.str(topology));
+    std::println("  Protocol: {}", enum_protocol_.str(protocol));
     std::println("  Groups: {}", roles_config.group_count);
     std::println("  Validators per group: {}",
                  roles_config.group_validator_count);
