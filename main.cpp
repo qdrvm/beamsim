@@ -161,6 +161,7 @@ namespace beamsim::example {
     gossip::Config gossip_config;
     bool snark1_group_once;
     bool snark1_pull;
+    bool snark1_global_push;
     bool snark1_pull_early;
     PeerIndex signature_half_direct;
     bool snark1_half_direct;
@@ -253,11 +254,34 @@ namespace beamsim::example {
         sendSignature(std::make_shared<Message>(std::move(signature)));
       });
     }
+    void send(PeerIndex to_peer, MessagePtr any_message) override {
+      if (shared_state_.snark1_pull and shared_state_.snark1_global_push
+          and role() == Role::GlobalAggregator
+          and shared_state_.roles.roles.at(to_peer) == Role::GlobalAggregator) {
+        snark1GlobalPush(any_message);
+      }
+      IPeer::send(to_peer, any_message);
+    }
 
     virtual void sendSignature(MessagePtr message) = 0;
     virtual void sendSnark1(MessagePtr message) = 0;
     virtual void sendSnark2(MessageSnark2 message) = 0;
 
+    void snark1GlobalPush(MessagePtr &any_message) {
+      if (auto *message = dynamic_cast<Message *>(any_message.get())) {
+        if (auto *ihave = std::get_if<MessageIhaveSnark1>(&message->variant)) {
+          message->variant = MessageSnark1{ihave->peer_indices};
+        }
+      } else if (auto *gossip =
+                     dynamic_cast<gossip::Message *>(any_message.get())) {
+        for (auto &publish : gossip->publish) {
+          snark1GlobalPush(publish.message);
+        }
+      } else if (auto *grid =
+                     dynamic_cast<grid::Message *>(any_message.get())) {
+        snark1GlobalPush(grid->message);
+      }
+    }
     bool onMessagePull(PeerIndex from_peer,
                        const MessagePtr &any_message,
                        MessageForwardFn forward) {
@@ -290,12 +314,13 @@ namespace beamsim::example {
           auto source_group = getGroupFromPeerIndices(ihave->peer_indices);
 
           // If the group has already contributed, ignore this ihave
-          if (snark1_received_groups_.get(source_group)) {
+          if (snark1_received_groups_.get(source_group) and snark1_received_ihave_groups_.get(source_group)) {
             report(simulator_,
                    "snark1_ihave_ignored_duplicate_group",
                    source_group);
             return true;
           }
+          snark1_received_ihave_groups_.set(source_group);
         }
 
         auto bits1 = pulling_max_.ones();
@@ -399,7 +424,18 @@ namespace beamsim::example {
       thread_.run(simulator_,
                   consts().snark_proof_verification_time,
                   [this, message, forward] {
-                    forward();
+                    // Smart push at global aggregators: forward and process only once per group
+                    auto source_group = getGroupFromPeerIndices(message.peer_indices);
+                    if (snark1_pushed_groups_.get(source_group)) {
+                      report(simulator_,
+                             "snark1_smart_push_ignored_duplicate_group",
+                             source_group);
+                      return;  // ignore duplicate for this group
+                    }
+                    snark1_pushed_groups_.set(source_group);
+                    if (forward) {
+                      forward();
+                    }
                     _onMessageSnark1(message);
                   });
     }
@@ -574,6 +610,8 @@ namespace beamsim::example {
     BitSet pulling_max_;
     // Track which groups have already contributed snark1 (for global aggregators)
     BitSet snark1_received_groups_;
+    BitSet snark1_received_ihave_groups_;
+    BitSet snark1_pushed_groups_;
     Thread thread_;
   };
 
@@ -839,6 +877,7 @@ void run_simulation(const SimulationConfig &config) {
         .gossip_config = config.gossip_config,
         .snark1_group_once = config.snark1_group_once,
         .snark1_pull = config.snark1_pull,
+        .snark1_global_push = config.snark1_global_push,
         .snark1_pull_early = config.snark1_pull_early,
         .signature_half_direct = config.signature_half_direct,
         .snark1_half_direct = config.snark1_half_direct,

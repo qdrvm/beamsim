@@ -51,7 +51,7 @@ namespace beamsim::example {
         if (limb == 0) {
           continue;
         }
-        return limb_bits - 1 - std::countl_zero(limb);
+        return i * limb_bits + limb_bits - 1 - std::countl_zero(limb);
       }
       return std::nullopt;
     }
@@ -158,6 +158,28 @@ namespace beamsim::example {
         }
       }
       abort();
+    }
+    MessageHash hash() const override {
+      MessageHasher hasher;
+      MessageEncodeTo to{[&hasher](BytesIn part) { hasher.update(part); }};
+      const BitSet *peer_indices = nullptr;
+      if (auto *signature = std::get_if<MessageSignature>(&variant)) {
+        encodeTo(to, (uint8_t)0);
+        encodeTo(to, signature->peer_index);
+      } else if (auto *snark1 = std::get_if<MessageIhaveSnark1>(&variant)) {
+        peer_indices = &snark1->peer_indices;
+      } else if (std::holds_alternative<MessageIwantSnark1>(variant)) {
+        abort();
+      } else if (auto *snark1 = std::get_if<MessageSnark1>(&variant)) {
+        peer_indices = &snark1->peer_indices;
+      } else {
+        abort();
+      }
+      if (peer_indices) {
+        encodeTo(to, (uint8_t)1);
+        encodeTo(to, *peer_indices);
+      }
+      return hasher.hash();
     }
 
     Variant variant;
