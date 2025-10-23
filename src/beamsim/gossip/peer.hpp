@@ -142,14 +142,16 @@ namespace beamsim::gossip {
           and config_.wfr_latency != nullptr
           and *config_.wfr_robust < peers.size()) {
         random_.shuffle(peers);
-        peers.erase(std::remove_if(
-            peers.begin() + *config_.wfr_robust,
-            peers.end(),
-            [&](PeerIndex to_peer) {
-              return config_.wfr_latency(peer_.peer_index_, to_peer)
-                  <= config_.wfr_latency(*from_peer, peer_.peer_index_)
-                         + config_.wfr_latency_threshold;
-            }));
+        peers.erase(std::remove_if(peers.begin() + *config_.wfr_robust,
+                                   peers.end(),
+                                   [&](PeerIndex to_peer) {
+                                     return config_.wfr_latency(
+                                                peer_.peer_index_, to_peer)
+                                          > config_.wfr_latency(
+                                                *from_peer, peer_.peer_index_)
+                                                + config_.wfr_latency_threshold;
+                                   }),
+                    peers.end());
       }
       for (auto &to_peer : peers) {
         getBatch(to_peer).publish.emplace_back(publish);
