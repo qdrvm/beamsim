@@ -84,8 +84,8 @@ namespace beamsim::gossip {
         }
         dontwant_.emplace(from_peer, message_hash);
         dontwant_.emplace(publish.origin, message_hash);
-        on_gossip(publish.message, [this, publish, message_hash] {
-          _gossip(publish, message_hash);
+        on_gossip(publish.message, [this, from_peer, publish, message_hash] {
+          _gossip(publish, message_hash, from_peer);
         });
       }
       for (auto &message_hash : gossip_message.iwant) {
@@ -117,17 +117,41 @@ namespace beamsim::gossip {
       if (not duplicate_cache_.emplace(message_hash).second) {
         return;
       }
-      _gossip({topic_index, peer_.peer_index_, any_message}, message_hash);
+      _gossip({topic_index, peer_.peer_index_, any_message},
+              message_hash,
+              std::nullopt);
     }
 
    private:
-    void _gossip(const Publish &publish, MessageHash message_hash) {
+    void _gossip(const Publish &publish,
+                 MessageHash message_hash,
+                 std::optional<PeerIndex> from_peer) {
       mcache_.emplace(message_hash, publish);
       history_[publish.topic_index].add(message_hash);
+      std::vector<PeerIndex> peers;
       for (auto &to_peer : views_.at(publish.topic_index).publishTo()) {
+        if (to_peer == from_peer) {
+          continue;
+        }
         if (dontwant_.contains({to_peer, message_hash})) {
           continue;
         }
+        peers.emplace_back(to_peer);
+      }
+      if (from_peer.has_value() and config_.wfr_robust.has_value()
+          and config_.wfr_latency != nullptr
+          and *config_.wfr_robust < peers.size()) {
+        random_.shuffle(peers);
+        peers.erase(std::remove_if(
+            peers.begin() + *config_.wfr_robust,
+            peers.end(),
+            [&](PeerIndex to_peer) {
+              return config_.wfr_latency(peer_.peer_index_, to_peer)
+                  <= config_.wfr_latency(*from_peer, peer_.peer_index_)
+                         + config_.wfr_latency_threshold;
+            }));
+      }
+      for (auto &to_peer : peers) {
         getBatch(to_peer).publish.emplace_back(publish);
       }
     }
