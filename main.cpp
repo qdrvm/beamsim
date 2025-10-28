@@ -314,7 +314,8 @@ namespace beamsim::example {
           auto source_group = getGroupFromPeerIndices(ihave->peer_indices);
 
           // If the group has already contributed, ignore this ihave
-          if (snark1_received_groups_.get(source_group) and snark1_received_ihave_groups_.get(source_group)) {
+          if (snark1_received_groups_.get(source_group)
+              and snark1_received_ihave_groups_.get(source_group)) {
             report(simulator_,
                    "snark1_ihave_ignored_duplicate_group",
                    source_group);
@@ -425,7 +426,8 @@ namespace beamsim::example {
                   consts().snark_proof_verification_time,
                   [this, message, forward] {
                     // Smart push at global aggregators: forward and process only once per group
-                    auto source_group = getGroupFromPeerIndices(message.peer_indices);
+                    auto source_group =
+                        getGroupFromPeerIndices(message.peer_indices);
                     if (snark1_pushed_groups_.get(source_group)) {
                       report(simulator_,
                              "snark1_smart_push_ignored_duplicate_group",
@@ -882,6 +884,12 @@ void run_simulation(const SimulationConfig &config) {
         .signature_half_direct = config.signature_half_direct,
         .snark1_half_direct = config.snark1_half_direct,
         .stop_on_create_snark1 = config.local_aggregation_only,
+    };
+
+    shared_state.gossip_config.wfr_latency = [&](beamsim::PeerIndex peer1,
+                                                 beamsim::PeerIndex peer2) {
+      return std::chrono::milliseconds{
+          routers.directWire(peer1, peer2).delay_ms};
     };
 
     beamsim::example::report(simulator,

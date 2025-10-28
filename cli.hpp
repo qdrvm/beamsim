@@ -709,6 +709,9 @@ struct SimulationConfig {
     yaml.at({"gossip", "mesh_n"}).get(gossip_config.mesh_n);
     yaml.at({"gossip", "non_mesh_n"}).get(gossip_config.non_mesh_n);
     yaml.at({"gossip", "idontwant"}).get(gossip_config.idontwant);
+    if (auto yaml_wfr_robust = yaml.at({"gossip", "wfr", "robust"})) {
+      yaml_wfr_robust.get(gossip_config.wfr_robust.emplace());
+    }
 
     auto &consts = beamsim::consts();
     yaml.at({"consts", "signature_time"}).get(consts.signature_time);
